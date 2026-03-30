@@ -1,0 +1,9 @@
+{
+  "name": "Цветастый - Relax & Shop",
+  "description": "Telegram Mini App для магазина Цветастый: чай для ванн, травы и свечи. Релакс начинается здесь.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
