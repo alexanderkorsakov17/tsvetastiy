@@ -1,5 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
+import * as VKID from '@vkid/sdk';
 import { createPortal } from 'react-dom';
 import { ShoppingBag, Sparkles, User, Heart, ChevronRight, X, Sparkle, Share2, Copy, Users, Gift, TrendingUp, Wallet, Info, Trash2, Plus, Minus, Award, Target, Zap, ChevronDown, ChevronUp, History, ArrowUpRight, ArrowDownLeft, Send, MessageSquare, ExternalLink, Clock, LogOut, ShieldCheck, Edit3, MapPin, Calendar, Check, Search, Truck, Package, Store, Home, AlertCircle, ThumbsUp, Coins, Repeat, HeartHandshake, Layers, Moon, Sun, Maximize2, Minimize2, ChevronLeft, Navigation, CreditCard, ArrowRight, RefreshCw } from 'lucide-react';
 import { YMaps, Map, Placemark, ZoomControl, useYMaps } from '@pbe/react-yandex-maps';
@@ -758,6 +759,75 @@ const ORDER_STATUSES_META: Record<OrderStatus, { label: string; icon: React.Reac
   received: { label: 'Дома', icon: <Home size={12} />, color: 'text-gray-400', bgColor: 'bg-gray-400' },
 };
 
+const VkOneTap = ({ onLoginSuccess, onLoginError }: { onLoginSuccess: (user: any) => void, onLoginError: (err: any) => void }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const renderedRef = useRef(false);
+
+  useEffect(() => {
+    if (!containerRef.current || renderedRef.current) return;
+
+    renderedRef.current = true;
+    containerRef.current.innerHTML = '';
+
+    VKID.Config.init({
+      app: 54511533,
+      redirectUrl: `${window.location.origin}/api/auth/callback/vk`,
+      responseMode: VKID.ConfigResponseMode.Callback,
+      source: VKID.ConfigSource.LOWCODE,
+      scope: '',
+    });
+
+    const oneTap = new VKID.OneTap();
+
+    oneTap.render({
+      container: containerRef.current,
+      showAlternativeLogin: true
+    })
+    .on(VKID.WidgetEvents.ERROR, onLoginError)
+    .on(VKID.OneTapInternalEvents.LOGIN_SUCCESS, (payload: any) => {
+      console.log('VK Login Success Payload:', payload);
+      const { code, device_id } = payload;
+
+      // Используем SDK для обмена кода на токен. 
+      // Это автоматически обработает PKCE (verifier), который SDK хранит в браузере.
+      VKID.Auth.exchangeCode(code, device_id)
+        .then(result => {
+          console.log('VK Token Exchange Success:', result);
+          
+          return fetch('/api/auth/vkid', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              access_token: result.access_token,
+              // Передаем также code/device_id на всякий случай для логов
+              code, 
+              device_id 
+            })
+          });
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.user) {
+            onLoginSuccess(data.user);
+          } else {
+            const errorMsg = data.details ? `${data.error}: ${JSON.stringify(data.details)}` : (data.error || 'Failed to authenticate');
+            onLoginError(errorMsg);
+          }
+        })
+        .catch(err => {
+          console.error('VK Exchange Error:', err);
+          onLoginError(err.message || 'Ошибка при обмене кода на токен');
+        });
+    });
+
+    return () => {
+      // Cleanup if necessary, though OneTap doesn't have an explicit destroy in some versions
+    };
+  }, [onLoginSuccess, onLoginError]);
+
+  return <div ref={containerRef} className="w-full" />;
+};
+
 const App: React.FC = () => {
   return (
     <YMaps query={{ 
@@ -774,7 +844,6 @@ const App: React.FC = () => {
 const AppContent: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [referralCode, setReferralCode] = useState<string | null>(null);
 
@@ -947,46 +1016,8 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // Listen for OAuth success message
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {
-        // Refresh user data
-        fetch('/api/auth/me')
-          .then(res => {
-            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-            return res.json();
-          })
-          .then(data => {
-            if (data.user) {
-              setCurrentUser(data.user);
-              setIsLoggedIn(true);
-              setEditName(data.user.name);
-            }
-          })
-          .catch(err => console.error('Failed to fetch user after OAuth:', err))
-          .finally(() => setIsAuthenticating(false));
-      }
-    };
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, []);
-
-  const handleLogin = async () => {
-    setIsAuthenticating(true);
-    try {
-      // Redirect to Auth.js VK sign-in
-      window.location.href = "/api/auth/signin/vk";
-    } catch (error) {
-      console.error("Login error:", error);
-      setIsAuthenticating(false);
-    }
-  };
-
   const handleLogout = async () => {
     try {
-      // Call Auth.js signout first
-      await fetch('/api/auth/signout', { method: 'POST', body: new URLSearchParams({ csrf: 'true' }) });
       await fetch('/api/auth/logout', { method: 'POST' });
       setIsLoggedIn(false);
       setCurrentUser(null);
@@ -1155,13 +1186,17 @@ const AppContent: React.FC = () => {
         <p className={`text-[10px] font-bold tracking-[0.4em] uppercase mb-[106px] ${isDarkMode ? 'text-pink-400' : 'text-pink-500'}`}>Мастерская релакса</p>
         
         <div className="w-full max-w-[240px] mx-auto space-y-4">
-          <button 
-            onClick={handleLogin} 
-            disabled={isAuthenticating} 
-            className={`w-full ${isDarkMode ? 'bg-gray-800' : 'bg-gray-100'} ${isDarkMode ? 'text-white' : 'text-gray-600'} font-black py-4 rounded-[32px] shadow-lg flex items-center justify-center gap-4 active:scale-95 transition-all uppercase text-[10px] tracking-[0.2em]`}
-          >
-            {isAuthenticating ? "Вход..." : "Войти через ВК"}
-          </button>
+          <VkOneTap 
+            onLoginSuccess={(user) => {
+              setCurrentUser(user);
+              setIsLoggedIn(true);
+              setEditName(user.name);
+            }}
+            onLoginError={(err) => {
+              console.error('VK Login Error:', err);
+              alert('Ошибка входа через VK ID');
+            }}
+          />
         </div>
       </div>
     );

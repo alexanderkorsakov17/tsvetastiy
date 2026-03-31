@@ -2,8 +2,6 @@ import express from "express";
 import * as path from "path";
 import axios from "axios";
 import _cookieSession from "cookie-session";
-import { ExpressAuth, getSession } from "@auth/express";
-import VkProvider from "@auth/core/providers/vk";
 
 const cookieSession = (_cookieSession as any).default || _cookieSession;
 
@@ -20,39 +18,6 @@ console.log("cookieSession type:", typeof cookieSession);
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
-
-// Auth.js Configuration
-const authConfig = {
-  providers: [
-    VkProvider({
-      clientId: process.env.VK_CLIENT_ID || "54511533",
-      clientSecret: process.env.VK_CLIENT_SECRET || "xKjOWQqGuSI9B9mU3M8p",
-    }),
-  ],
-  callbacks: {
-    async session({ session, token }: any) {
-      if (session.user) {
-        session.user.id = token.sub;
-      }
-      return session;
-    },
-    async jwt({ token, profile }: any) {
-      if (profile) {
-        token.sub = profile.id?.toString() || profile.user_id?.toString();
-      }
-      return token;
-    },
-  },
-  basePath: "/api/auth",
-  secret: process.env.AUTH_SECRET || "default-auth-secret-key-1234567890",
-  trustHost: true,
-};
-
-// Session middleware for Auth.js
-app.use(async (req, res, next) => {
-  res.locals.session = await getSession(req, authConfig);
-  next();
-});
 
 try {
   app.use(
@@ -363,36 +328,116 @@ app.patch("/api/admin/users/:id/bonuses", (req, res) => {
 
 // Get current user
 app.get("/api/auth/me", async (req, res) => {
-  // Try to get session from Auth.js first
-  const session = (res as any).locals.session;
+  res.json({ user: req.session?.user || null });
+});
+
+// VK ID One Tap Login Handler
+app.post("/api/auth/vkid", async (req, res) => {
+  const { code, device_id, access_token } = req.body;
   
-  if (session?.user) {
-    // Map Auth.js session to our internal user format
-    const vkId = session.user.id;
-    const existingUser = users.find(u => u.id === vkId);
+  let final_access_token = access_token;
+
+  try {
+    // Если токен не пришел с фронтенда, пробуем обменять код (старый флоу)
+    if (!final_access_token) {
+      if (!code || !device_id) {
+        return res.status(400).json({ error: "Missing code, device_id or access_token" });
+      }
+
+      let origin = process.env.APP_URL;
+      // In dev or if APP_URL is missing, use the request's origin
+      if (!origin || process.env.NODE_ENV !== "production") {
+        const referer = req.headers.referer || "https://tsvetastiy.vercel.app";
+        const url = new URL(referer);
+        origin = `${url.protocol}//${url.host}`;
+      }
+      const redirect_uri = `${origin}/api/auth/callback/vk`;
+      console.log("VK Exchange Redirect URI:", redirect_uri, "NODE_ENV:", process.env.NODE_ENV);
+
+      // Exchange code for access token
+      const tokenResponse = await axios.post("https://id.vk.com/oauth2/auth", 
+        new URLSearchParams({
+          grant_type: "authorization_code",
+          code: code,
+          device_id: device_id,
+          client_id: process.env.VK_CLIENT_ID || "54511533",
+          client_secret: process.env.VK_CLIENT_SECRET || "xKjOWQqGuSI9B9mU3M8p",
+          redirect_uri: redirect_uri
+        }).toString(),
+        { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+      ).catch(err => {
+        console.error("VK Token Exchange Axios Error:", err.response?.data || err.message);
+        throw err;
+      });
+
+      console.log("VK Token Response Data:", JSON.stringify(tokenResponse.data));
+
+      const { access_token: exchangedToken, error: tokenError, error_description } = tokenResponse.data;
+
+      if (tokenError) {
+        console.error("VK Token Error:", tokenError, error_description);
+        return res.status(400).json({ error: tokenError, details: error_description });
+      }
+      
+      final_access_token = exchangedToken;
+    }
+
+    if (!final_access_token) {
+      console.error("Missing access_token after exchange attempt");
+      return res.status(500).json({ error: "Failed to obtain access_token" });
+    }
+
+    // Get user info
+    const userResponse = await axios.post("https://id.vk.com/oauth2/user_info",
+      new URLSearchParams({
+        access_token: final_access_token,
+        client_id: process.env.VK_CLIENT_ID || "54511533",
+      }).toString(),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    ).catch(err => {
+      console.error("VK User Info Axios Error:", err.response?.data || err.message);
+      throw err;
+    });
+
+    console.log("VK User Info Response Data:", JSON.stringify(userResponse.data));
+
+    const vkUser = userResponse.data.user;
+    if (!vkUser) {
+      console.error("VK User Info missing user object:", userResponse.data);
+      return res.status(500).json({ error: "Missing user data from VK", details: userResponse.data });
+    }
+
+    const vkId = vkUser.user_id.toString();
+
+    let existingUser = users.find(u => u.id === vkId);
     
     if (!existingUser) {
-      const newUser = {
+      existingUser = {
         id: vkId,
-        name: session.user.name?.split(' ')[0] || "Пользователь",
-        fullName: session.user.name || "Пользователь",
-        photo: session.user.image || "https://picsum.photos/seed/user/200/200",
+        name: vkUser.first_name || "Пользователь",
+        fullName: `${vkUser.first_name} ${vkUser.last_name}`.trim() || "Пользователь",
+        photo: vkUser.avatar || "https://picsum.photos/seed/user/200/200",
         city: "Не указан",
         birthDate: "Не указана",
-        email: session.user.email || "",
+        email: vkUser.email || "",
         tgId: "",
         orderCount: 0,
         bonusBalance: 0,
         createdAt: new Date().toLocaleDateString('ru-RU')
       };
-      users.push(newUser);
-      req.session!.user = newUser;
-    } else {
-      req.session!.user = existingUser;
+      users.push(existingUser);
     }
-  }
 
-  res.json({ user: req.session?.user || null });
+    req.session!.user = existingUser;
+    res.json({ user: existingUser });
+  } catch (error: any) {
+    const errorData = error.response?.data;
+    console.error("VK ID Exchange Error:", errorData || error.message);
+    res.status(500).json({ 
+      error: "Failed to authenticate with VK ID",
+      details: errorData || error.message
+    });
+  }
 });
 
 // Update profile
@@ -436,9 +481,6 @@ app.post("/api/auth/mock", (req, res) => {
   req.session!.user = users.find(u => u.id === mockUser.id);
   res.json({ user: req.session!.user });
 });
-
-// Mount Auth.js at /api/auth
-app.use("/api/auth", ExpressAuth(authConfig));
 
 // Server initialization
 const startServer = async () => {

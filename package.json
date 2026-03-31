@@ -15,6 +15,7 @@
     "@auth/express": "^0.12.1",
     "@google/genai": "^1.40.0",
     "@pbe/react-yandex-maps": "^1.2.5",
+    "@vkid/sdk": "^2.6.5",
     "axios": "^1.14.0",
     "cookie-session": "^2.1.1",
     "esbuild": "^0.27.4",
