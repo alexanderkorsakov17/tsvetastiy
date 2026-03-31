@@ -43,6 +43,7 @@ const authConfig = {
       return token;
     },
   },
+  basePath: "/api/auth",
   secret: process.env.AUTH_SECRET || "default-auth-secret-key-1234567890",
   trustHost: true,
 };
