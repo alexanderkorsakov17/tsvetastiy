@@ -460,6 +460,16 @@ app.patch("/api/admin/users/:id/bonuses", async (req, res) => {
 
 // Get current user
 app.get("/api/auth/me", async (req, res) => {
+  if (req.session?.user) {
+    try {
+      const userDoc = await db.collection("users").doc(req.session.user.id).get();
+      if (userDoc.exists) {
+        req.session.user = userDoc.data();
+      }
+    } catch (error) {
+      console.error("Error refreshing user session:", error);
+    }
+  }
   res.json({ user: req.session?.user || null });
 });
 
@@ -477,11 +487,21 @@ app.post("/api/auth/vkid", async (req, res) => {
       }
 
       let origin = process.env.APP_URL;
-      // In dev or if APP_URL is missing, use the request's origin
-      if (!origin || process.env.NODE_ENV !== "production") {
-        const referer = req.headers.referer || "https://tsvetastiy.vercel.app";
-        const url = new URL(referer);
-        origin = `${url.protocol}//${url.host}`;
+      
+      // In production with multiple domains, we should prefer the actual origin from the request
+      // to ensure redirect_uri matches what the frontend sent.
+      const referer = req.headers.referer;
+      if (referer) {
+        try {
+          const url = new URL(referer);
+          origin = `${url.protocol}//${url.host}`;
+        } catch (e) {
+          console.error("Failed to parse referer for origin:", e);
+        }
+      }
+
+      if (!origin) {
+        origin = "https://tsvetastiy.vercel.app";
       }
       const redirect_uri = `${origin}/api/auth/callback/vk`;
       console.log("VK Exchange Redirect URI:", redirect_uri, "NODE_ENV:", process.env.NODE_ENV);

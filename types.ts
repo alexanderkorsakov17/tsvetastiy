@@ -37,6 +37,8 @@ export interface User {
   fullName?: string;
   photo: string;
   city?: string;
+  location?: string; // New field for region and city
+  phone?: string; // New field for phone number
   birthDate?: string;
   email?: string;
   tgId: string;

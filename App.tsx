@@ -840,6 +840,8 @@ const AppContent: React.FC = () => {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editName, setEditName] = useState('');
   const [editFullName, setEditFullName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editLocation, setEditLocation] = useState('');
   const [editBirthDate, setEditBirthDate] = useState('');
   const [editCity, setEditCity] = useState('');
   const [citySearch, setCitySearch] = useState('');
@@ -873,6 +875,7 @@ const AppContent: React.FC = () => {
   // All sections collapsed by default
   const [isAffiliateExpanded, setIsAffiliateExpanded] = useState(false);
   const [isOrdersExpanded, setIsOrdersExpanded] = useState(false);
+  const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
   const [isBonusHistoryExpanded, setIsBonusHistoryExpanded] = useState(false);
   
   const [orders, setOrders] = useState<Order[]>([]);
@@ -977,7 +980,11 @@ const AppContent: React.FC = () => {
         if (data.user) {
           setCurrentUser(data.user);
           setIsLoggedIn(true);
-          setEditName(data.user.name);
+          setEditName(data.user.name || '');
+          setEditFullName(data.user.fullName || '');
+          setEditCity(data.user.city || '');
+          setCitySearch(data.user.location || data.user.city || '');
+          setEditPhone(data.user.phone || '');
           fetchOrders();
           fetchReferrals();
         }
@@ -1052,6 +1059,26 @@ const AppContent: React.FC = () => {
   const maxBonusAllowed = Math.floor(cartTotal * 0.99);
   const bonusToApply = useBonuses ? Math.min(bonusToSpend, maxBonusAllowed, currentUser?.bonusBalance || 0) : 0;
   const finalTotal = cartTotal + deliveryFee - bonusToApply;
+
+  const refreshUser = async () => {
+    try {
+      const response = await fetch('/api/auth/me');
+      const data = await response.json();
+      if (data.user) {
+        setCurrentUser(data.user);
+      }
+    } catch (error) {
+      console.error('Failed to refresh user:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'profile' && isLoggedIn) {
+      refreshUser();
+      fetchOrders();
+      fetchReferrals();
+    }
+  }, [activeTab, isLoggedIn]);
 
   const handleAiSend = async () => {
     if (!aiInput.trim()) return;
@@ -1210,7 +1237,10 @@ const AppContent: React.FC = () => {
             onLoginSuccess={(user) => {
               setCurrentUser(user);
               setIsLoggedIn(true);
-              setEditName(user.name);
+              setEditName(user.name || '');
+              setEditFullName(user.fullName || '');
+              setCitySearch(user.location || user.city || '');
+              setEditPhone(user.phone || '');
               fetchOrders();
               fetchReferrals();
             }}
@@ -1223,6 +1253,30 @@ const AppContent: React.FC = () => {
       </div>
     );
   }
+
+  const handleSaveProfile = async () => {
+    const updatedData = {
+      name: editFullName.split(' ')[0] || editFullName,
+      fullName: editFullName,
+      location: citySearch,
+      phone: editPhone
+    };
+
+    try {
+      const res = await fetch('/api/auth/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedData)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCurrentUser(data.user);
+        setIsEditingProfile(false);
+      }
+    } catch (error) {
+      console.error('Failed to update profile:', error);
+    }
+  };
 
   return (
     <div className={`flex flex-col min-h-screen max-w-md mx-auto shadow-2xl overflow-hidden relative pb-20 font-['Montserrat'] transition-colors duration-500 ${isDarkMode ? 'dark bg-[#121212] text-white' : 'bg-white text-gray-900'}`}>
@@ -1321,8 +1375,8 @@ const AppContent: React.FC = () => {
             <div className="flex items-center gap-4 mb-2">
               <div className="w-16 h-16 bg-gradient-to-tr from-pink-300 to-amber-200 rounded-[24px] p-0.5 shadow-md"><img src={currentUser?.photo} className="w-full h-full object-cover rounded-[22px]" alt="Avatar" /></div>
               <div className="flex-1">
-                 <h2 className="text-lg font-black text-gray-900 uppercase tracking-tight leading-none">{currentUser?.name}</h2>
-                 <p className="text-pink-500 text-[9px] font-black uppercase tracking-widest mt-1 opacity-70">{currentUser?.tgId}</p>
+                 <h2 className="text-lg font-black text-gray-900 uppercase tracking-tight leading-none">{currentUser?.fullName || currentUser?.name}</h2>
+                 <p className="text-gray-400 text-[9px] font-bold uppercase tracking-widest mt-1 opacity-70">ID: {currentUser?.id}</p>
               </div>
               <div className="flex gap-2">
                 <button onClick={toggleTheme} className={`p-2.5 rounded-xl relative active:scale-90 transition-all ${isDarkMode ? 'bg-gray-800 text-amber-400' : 'bg-pink-50 text-pink-500'}`}>
@@ -1356,7 +1410,7 @@ const AppContent: React.FC = () => {
                 />
                 {isOrdersExpanded && (
                   <div className="p-4 space-y-4 animate-fadeIn border-t border-gray-50 bg-gray-50/20">
-                    {orders.length === 0 ? <p className="text-center py-4 text-[9px] font-black uppercase text-gray-400">Нет заказов</p> : orders.map(order => (
+                    {orders.filter(o => o.status !== 'received').length === 0 ? <p className="text-center py-4 text-[9px] font-black uppercase text-gray-400">Нет активных заказов</p> : orders.filter(o => o.status !== 'received').map(order => (
                       <div key={order.id} className="bg-white p-4 rounded-[24px] border border-gray-50 shadow-sm relative overflow-hidden group">
                         <div className="flex justify-between items-start mb-4">
                            <div>
@@ -1460,6 +1514,34 @@ const AppContent: React.FC = () => {
                       <Users size={16} />
                       Список приглашенных
                     </button>
+                  </div>
+                )}
+              </div>
+              <div className="bg-white rounded-[28px] border border-gray-50 shadow-sm overflow-hidden">
+                <AccordionHeader 
+                  isOpen={isHistoryExpanded} 
+                  onToggle={() => setIsHistoryExpanded(!isHistoryExpanded)} 
+                  icon={<History size={18} />} 
+                  title="История заказов" 
+                  subtitle="Завершенные" 
+                />
+                {isHistoryExpanded && (
+                  <div className="p-4 space-y-4 animate-fadeIn border-t border-gray-50 bg-gray-50/20">
+                    {orders.filter(o => o.status === 'received').length === 0 ? (
+                      <p className="text-center py-4 text-[9px] font-black uppercase text-gray-400">Нет завершенных заказов</p>
+                    ) : (
+                      orders.filter(o => o.status === 'received').map(order => (
+                        <div key={order.id} className="bg-white p-4 rounded-[24px] border border-gray-50 shadow-sm relative overflow-hidden">
+                          <div className="flex justify-between items-start">
+                             <div>
+                                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-0.5">#{order.id}</p>
+                                <p className="text-[11px] font-bold text-gray-900">{order.date}</p>
+                             </div>
+                             <p className="text-[11px] font-black text-gray-900">{order.total} ₽</p>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 )}
               </div>
@@ -1913,17 +1995,21 @@ const AppContent: React.FC = () => {
              </header>
              <div className="space-y-6">
                 <div className="space-y-1.5">
-                   <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Имя</label>
-                   <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Ваше имя" className="w-full bg-gray-50 border border-gray-100 rounded-[20px] px-5 py-4 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-100 transition-all" />
+                   <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Имя и Фамилия</label>
+                   <input type="text" value={editFullName} onChange={(e) => setEditFullName(e.target.value)} placeholder="Иван Иванов" className="w-full bg-gray-50 border border-gray-100 rounded-[20px] px-5 py-4 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-100 transition-all" />
                 </div>
                 <div className="space-y-1.5">
-                   <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Город</label>
+                   <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Область и Город</label>
                    <div className="relative">
-                     <input type="text" value={citySearch} onChange={(e) => { setCitySearch(e.target.value); setShowCityDropdown(true); }} onFocus={() => setShowCityDropdown(true)} placeholder="Ваш город" className="w-full bg-gray-50 border border-gray-100 rounded-[20px] px-5 py-4 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-100 transition-all" />
+                     <input type="text" value={citySearch} onChange={(e) => { setCitySearch(e.target.value); setShowCityDropdown(true); }} onFocus={() => setShowCityDropdown(true)} placeholder="Московская обл., г. Москва" className="w-full bg-gray-50 border border-gray-100 rounded-[20px] px-5 py-4 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-100 transition-all" />
                    </div>
                 </div>
+                <div className="space-y-1.5">
+                   <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Номер телефона</label>
+                   <input type="tel" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="+7 (999) 000-00-00" className="w-full bg-gray-50 border border-gray-100 rounded-[20px] px-5 py-4 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-100 transition-all" />
+                </div>
              </div>
-             <button onClick={() => { setCurrentUser(prev => prev ? {...prev, name: editName, city: citySearch} : null); setIsEditingProfile(false); }} className="w-full mt-10 bg-gray-900 text-white font-black py-5 rounded-[24px] shadow-2xl uppercase text-xs tracking-widest">Сохранить</button>
+             <button onClick={handleSaveProfile} className="w-full mt-10 bg-gray-900 text-white font-black py-5 rounded-[24px] shadow-2xl uppercase text-xs tracking-widest">Сохранить</button>
           </div>
         </div>
       )}
