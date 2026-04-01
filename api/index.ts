@@ -195,6 +195,8 @@ app.get("/api/products", (req, res) => {
 // Public API: Create Order
 app.post("/api/orders", (req, res) => {
   const user = req.session?.user;
+  const { total, bonusUsed = 0 } = req.body;
+  
   const order = {
     ...req.body,
     id: Math.floor(Math.random() * 90000 + 10000).toString(),
@@ -205,6 +207,45 @@ app.post("/api/orders", (req, res) => {
     userContact: user?.email || user?.tgId || 'Нет контактов'
   };
   orders.unshift(order);
+
+  // Update user balance if bonuses were used
+  if (user && bonusUsed > 0) {
+    const userIdx = users.findIndex(u => u.id === user.id);
+    if (userIdx !== -1) {
+      users[userIdx].bonusBalance -= bonusUsed;
+      bonusHistory.unshift({
+        id: Date.now().toString() + Math.random(),
+        userId: user.id,
+        type: 'spend',
+        amount: bonusUsed,
+        description: `Оплата баллами заказа #${order.id}`,
+        date: new Date().toLocaleDateString('ru-RU')
+      });
+      // Update session user
+      req.session!.user = users[userIdx];
+    }
+  }
+
+  // Cashback Logic
+  if (user) {
+    const cashback = Math.round(order.total * 0.05);
+    if (cashback > 0) {
+      const userIdx = users.findIndex(u => u.id === user.id);
+      if (userIdx !== -1) {
+        users[userIdx].bonusBalance += cashback;
+        bonusHistory.unshift({
+          id: Date.now().toString() + Math.random(),
+          userId: user.id,
+          type: 'earn',
+          amount: cashback,
+          description: `Кэшбэк за заказ #${order.id}`,
+          date: new Date().toLocaleDateString('ru-RU')
+        });
+        // Update session user
+        req.session!.user = users[userIdx];
+      }
+    }
+  }
 
   // Referral Bonus Logic
   if (user && user.invitedBy) {
@@ -286,6 +327,26 @@ app.delete("/api/admin/products/:id", (req, res) => {
   const { id } = req.params;
   products = products.filter(p => p.id !== id);
   res.json({ success: true });
+});
+
+// User API: Get My Bonus History
+app.get("/api/users/me/history", (req, res) => {
+  const user = req.session?.user;
+  if (!user) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const history = bonusHistory.filter(h => h.userId === user.id);
+  res.json(history);
+});
+
+// User API: Get My Referrals
+app.get("/api/users/me/referrals", (req, res) => {
+  const user = req.session?.user;
+  if (!user) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const referrals = users.filter(u => u.invitedBy === user.id);
+  res.json(referrals);
 });
 
 // Admin API: Get All Users
@@ -408,6 +469,7 @@ app.post("/api/auth/vkid", async (req, res) => {
     }
 
     const vkId = vkUser.user_id.toString();
+    const { invitedBy } = req.body;
 
     let existingUser = users.find(u => u.id === vkId);
     
@@ -423,9 +485,27 @@ app.post("/api/auth/vkid", async (req, res) => {
         tgId: "",
         orderCount: 0,
         bonusBalance: 0,
+        invitedBy: invitedBy || undefined,
         createdAt: new Date().toLocaleDateString('ru-RU')
       };
       users.push(existingUser);
+
+      // If user was invited, give bonus to inviter
+      if (invitedBy) {
+        const inviterIdx = users.findIndex(u => u.id === invitedBy);
+        if (inviterIdx !== -1) {
+          const bonusAmount = 100; // Registration bonus
+          users[inviterIdx].bonusBalance += bonusAmount;
+          bonusHistory.unshift({
+            id: Date.now().toString() + Math.random(),
+            userId: invitedBy,
+            type: 'referral',
+            amount: bonusAmount,
+            description: `Бонус за регистрацию друга: ${existingUser.name}`,
+            date: new Date().toLocaleDateString('ru-RU')
+          });
+        }
+      }
     }
 
     req.session!.user = existingUser;
@@ -443,7 +523,13 @@ app.post("/api/auth/vkid", async (req, res) => {
 // Update profile
 app.patch("/api/auth/profile", (req, res) => {
   if (req.session?.user) {
-    req.session.user = { ...req.session.user, ...req.body };
+    const userIdx = users.findIndex(u => u.id === req.session!.user!.id);
+    if (userIdx !== -1) {
+      users[userIdx] = { ...users[userIdx], ...req.body };
+      req.session.user = users[userIdx];
+    } else {
+      req.session.user = { ...req.session.user, ...req.body };
+    }
     res.json({ user: req.session.user });
   } else {
     res.status(401).json({ error: "Unauthorized" });

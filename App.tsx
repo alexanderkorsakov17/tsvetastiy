@@ -6,7 +6,7 @@ import { ShoppingBag, Sparkles, User, Heart, ChevronRight, X, Sparkle, Share2, C
 import { YMaps, Map, Placemark, ZoomControl, useYMaps } from '@pbe/react-yandex-maps';
 
 import { PRODUCTS as INITIAL_PRODUCTS, RELAX_TIPS, RUSSIA_CITIES } from './constants';
-import { Product, Category, RelaxTip, Message } from './types';
+import { Product, Category, RelaxTip, Message, User as UserProfile, BonusTransaction } from './types';
 import { getRecommendation } from './geminiService';
 import { AdminPanel } from './AdminPanel';
 const TextLogo = ({ className = "h-10" }: { className?: string }) => (
@@ -195,27 +195,6 @@ interface Order {
   status: OrderStatus;
   items: string[];
   deliveryNote?: string;
-}
-
-interface BonusTransaction {
-  id: string;
-  type: 'earn' | 'spend' | 'referral';
-  amount: number;
-  description: string;
-  date: string;
-}
-
-interface UserProfile {
-  name: string;
-  fullName?: string;
-  birthDate?: string;
-  city?: string;
-  tgId: string;
-  photo: string;
-  orderCount: number;
-  bonusBalance: number;
-  primaryAddress?: string;
-  primaryProviderId?: string;
 }
 
 const MIN_ORDER_FREE_DELIVERY = 1500;
@@ -759,7 +738,7 @@ const ORDER_STATUSES_META: Record<OrderStatus, { label: string; icon: React.Reac
   received: { label: 'Дома', icon: <Home size={12} />, color: 'text-gray-400', bgColor: 'bg-gray-400' },
 };
 
-const VkOneTap = ({ onLoginSuccess, onLoginError }: { onLoginSuccess: (user: any) => void, onLoginError: (err: any) => void }) => {
+const VkOneTap = ({ onLoginSuccess, onLoginError, referralCode }: { onLoginSuccess: (user: any) => void, onLoginError: (err: any) => void, referralCode?: string | null }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const renderedRef = useRef(false);
 
@@ -801,7 +780,8 @@ const VkOneTap = ({ onLoginSuccess, onLoginError }: { onLoginSuccess: (user: any
               access_token: result.access_token,
               // Передаем также code/device_id на всякий случай для логов
               code, 
-              device_id 
+              device_id,
+              invitedBy: referralCode
             })
           });
         })
@@ -936,11 +916,36 @@ const AppContent: React.FC = () => {
     localStorage.setItem('theme', newMode ? 'dark' : 'light');
   };
 
-  const [bonusTransactions] = useState<BonusTransaction[]>([
-    { id: 'bt1', type: 'earn', amount: 50, description: 'Кэшбэк за заказ #12401', date: '24.05.2024' },
-    { id: 'bt2', type: 'referral', amount: 120, description: 'Бонус за приглашение друга', date: '20.05.2024' },
-    { id: 'bt3', type: 'spend', amount: 200, description: 'Оплата баллами заказа #11982', date: '12.04.2024' },
-  ]);
+  const [bonusTransactions, setBonusTransactions] = useState<BonusTransaction[]>([]);
+  const [referrals, setReferrals] = useState<UserProfile[]>([]);
+  const [isReferralsModalOpen, setIsReferralsModalOpen] = useState(false);
+
+  const fetchReferrals = async () => {
+    try {
+      const res = await fetch('/api/users/me/referrals');
+      if (res.ok) {
+        const data = await res.json();
+        setReferrals(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch referrals:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      fetch('/api/users/me/history')
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setBonusTransactions(data);
+          }
+        })
+        .catch(err => console.error('Failed to fetch bonus history:', err));
+    } else {
+      setBonusTransactions([]);
+    }
+  }, [isLoggedIn]);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const cityInputRef = useRef<HTMLDivElement>(null);
@@ -950,9 +955,9 @@ const AppContent: React.FC = () => {
   const categories = ['Все', ...Object.values(Category)];
   const referralLink = isLoggedIn && currentUser ? `${window.location.origin}?ref=${currentUser.id}` : "Войдите, чтобы получить ссылку";
   const affiliateStats = {
-    balance: 840,
+    balance: currentUser?.balance || 0,
     levels: [
-      { id: 1, name: '1 Уровень', percent: 5, count: 8, earned: 520, icon: <Zap size={14} /> },
+      { id: 1, name: '1 Уровень', percent: 5, count: referrals.length, earned: 520, icon: <Zap size={14} /> },
       { id: 2, name: '2 Уровень', percent: 3, count: 14, earned: 210, icon: <Target size={14} /> },
       { id: 3, name: '3 Уровень', percent: 2, count: 32, earned: 110, icon: <Award size={14} /> }
     ]
@@ -973,6 +978,7 @@ const AppContent: React.FC = () => {
           setIsLoggedIn(true);
           setEditName(data.user.name);
           fetchOrders();
+          fetchReferrals();
         }
       } catch (error) {
         console.error('Auth check failed:', error);
@@ -1094,8 +1100,10 @@ const AppContent: React.FC = () => {
   };
 
   const finishCheckout = async () => {
+    const bonusToApply = useBonuses ? bonusToSpend : 0;
     const newOrderData = {
       total: finalTotal,
+      bonusUsed: bonusToApply,
       items: cart.map(i => i.name),
       deliveryAddress: `${citySearch}, ${deliveryAddress}`,
       deliveryProvider: selectedProvider,
@@ -1111,6 +1119,16 @@ const AppContent: React.FC = () => {
       if (res.ok) {
         const newOrder = await res.json();
         setOrders(prev => [newOrder, ...prev]);
+        
+        // Fetch updated history
+        fetch('/api/users/me/history')
+          .then(res => res.json())
+          .then(data => {
+            if (Array.isArray(data)) {
+              setBonusTransactions(data);
+            }
+          })
+          .catch(err => console.error('Failed to fetch updated history:', err));
         
         // Update user balance if bonuses were used
         const bonusToApply = useBonuses ? bonusToSpend : 0;
@@ -1187,10 +1205,13 @@ const AppContent: React.FC = () => {
         
         <div className="w-full max-w-[240px] mx-auto space-y-4">
           <VkOneTap 
+            referralCode={referralCode}
             onLoginSuccess={(user) => {
               setCurrentUser(user);
               setIsLoggedIn(true);
               setEditName(user.name);
+              fetchOrders();
+              fetchReferrals();
             }}
             onLoginError={(err) => {
               console.error('VK Login Error:', err);
@@ -1380,7 +1401,7 @@ const AppContent: React.FC = () => {
                 />
                 {isBonusHistoryExpanded && (
                   <div className="p-4 space-y-2.5 animate-fadeIn border-t border-gray-50 bg-gray-50/20">
-                    {bonusTransactions.map(bt => (
+                    {bonusTransactions.length > 0 ? bonusTransactions.map(bt => (
                       <div key={bt.id} className="flex items-center justify-between p-3 bg-white rounded-2xl border border-gray-50">
                         <div className="flex items-center gap-3">
                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${bt.type === 'spend' ? 'bg-red-50 text-red-400' : 'bg-green-50 text-green-500'}`}>{bt.type === 'spend' ? <Repeat size={14} /> : <TrendingUp size={14} />}</div>
@@ -1388,7 +1409,14 @@ const AppContent: React.FC = () => {
                         </div>
                         <p className={`text-[11px] font-black ${bt.type === 'spend' ? 'text-red-400' : 'text-green-500'}`}>{bt.type === 'spend' ? '-' : '+'}{bt.amount}</p>
                       </div>
-                    ))}
+                    )) : (
+                      <div className="text-center py-8">
+                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3 text-gray-400">
+                          <Coins size={24} />
+                        </div>
+                        <p className="text-xs text-gray-400 font-medium">У вас пока нет истории бонусов</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1421,6 +1449,16 @@ const AppContent: React.FC = () => {
                          </div>
                        ))}
                     </div>
+                    <button 
+                      onClick={() => {
+                        fetchReferrals();
+                        setIsReferralsModalOpen(true);
+                      }}
+                      className="w-full py-4 rounded-2xl bg-indigo-50 text-indigo-600 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all"
+                    >
+                      <Users size={16} />
+                      Список приглашенных
+                    </button>
                   </div>
                 )}
               </div>
@@ -1909,6 +1947,47 @@ const AppContent: React.FC = () => {
           <span className="text-[8px] font-black uppercase tracking-widest">Я</span>
         </button>
       </nav>
+
+      {/* Referrals Modal */}
+      {isReferralsModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-0 sm:p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fadeIn" onClick={() => setIsReferralsModalOpen(false)} />
+          <div className="relative w-full max-w-md bg-white rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden animate-slideUp flex flex-col max-h-[80vh]">
+            <div className="p-6 border-b border-gray-50 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">Приглашенные</h3>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{referrals.length} человек</p>
+              </div>
+              <button onClick={() => setIsReferralsModalOpen(false)} className="w-10 h-10 bg-gray-50 rounded-full flex items-center justify-center text-gray-400 active:scale-90 transition-all"><X size={20} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-hide">
+              {referrals.length > 0 ? referrals.map(ref => (
+                <div key={ref.id} className="flex items-center justify-between p-4 bg-gray-50/50 rounded-2xl border border-gray-100">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-sm">
+                      <img src={ref.photo} alt={ref.name} className="w-full h-full object-cover" />
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-black text-gray-900 uppercase">{ref.name}</p>
+                      <p className="text-[8px] text-gray-400 font-bold uppercase tracking-widest">В клубе с {ref.createdAt}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] font-black text-indigo-600">{ref.orderCount} заказов</p>
+                  </div>
+                </div>
+              )) : (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-300">
+                    <Users size={32} />
+                  </div>
+                  <p className="text-sm text-gray-400 font-medium">У вас пока нет приглашенных друзей</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }

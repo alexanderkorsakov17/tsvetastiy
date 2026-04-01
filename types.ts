@@ -34,16 +34,18 @@ export interface Message {
 export interface User {
   id: string;
   name: string;
-  fullName: string;
+  fullName?: string;
   photo: string;
-  city: string;
-  birthDate: string;
-  email: string;
+  city?: string;
+  birthDate?: string;
+  email?: string;
   tgId: string;
   orderCount: number;
   bonusBalance: number;
   invitedBy?: string;
   createdAt: string;
+  primaryAddress?: string;
+  primaryProviderId?: string;
 }
 
 export interface BonusTransaction {
