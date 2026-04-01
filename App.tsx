@@ -861,6 +861,8 @@ const AppContent: React.FC = () => {
   const [payAfterReceipt, setPayAfterReceipt] = useState(false);
   const [bonusToSpend, setBonusToSpend] = useState(0);
   const [useBonuses, setUseBonuses] = useState(false);
+  const [recipientName, setRecipientName] = useState('');
+  const [recipientPhone, setRecipientPhone] = useState('');
 
   const [activeTab, setActiveTab] = useState<'shop' | 'zen' | 'profile'>(() => {
     const saved = localStorage.getItem('activeTab');
@@ -1136,6 +1138,8 @@ const AppContent: React.FC = () => {
     setDeliveryAddress('');
     setUseBonuses(false);
     setBonusToSpend(0);
+    setRecipientName(currentUser?.fullName || currentUser?.name || '');
+    setRecipientPhone(currentUser?.phone || '');
   };
 
   const handleProviderSelect = (id: string) => {
@@ -1159,7 +1163,9 @@ const AppContent: React.FC = () => {
       items: cart.map(i => i.name),
       deliveryAddress: `${citySearch}, ${deliveryAddress}`,
       deliveryProvider: selectedProvider,
-      comment: orderComment
+      comment: orderComment,
+      recipientName,
+      recipientPhone
     };
 
     try {
@@ -1813,32 +1819,69 @@ const AppContent: React.FC = () => {
                              </div>
                              <div className="space-y-3 max-h-48 overflow-y-auto pr-2 scrollbar-hide">
                                 {cart.map(item => (
-                                  <div key={item.id} className="flex justify-between items-center group">
-                                     <div className="flex flex-col">
+                                  <div key={item.id} className="flex items-center gap-3 group">
+                                     <img src={item.image} alt={item.name} className="w-10 h-10 rounded-lg object-cover shadow-sm" />
+                                     <div className="flex-1 flex flex-col">
                                         <span className={`text-xs font-bold ${isDarkMode ? 'text-white/90' : 'text-gray-800'}`}>{item.name}</span>
                                         <span className="text-[10px] text-gray-400 font-medium">Количество: {item.quantity}</span>
                                      </div>
-                                     <span className="text-xs font-black text-pink-500">{item.price * item.quantity} ₽</span>
+                                     <span className="text-xs font-black text-pink-500 shrink-0">{item.price * item.quantity} ₽</span>
                                   </div>
                                 ))}
                              </div>
                           </div>
 
                           {/* Delivery & Address Card */}
-                          <div className={`rounded-[32px] p-4 border transition-all ${isDarkMode ? 'bg-white/5 border-white/10' : 'bg-white border-gray-100 shadow-sm'}`}>
-                             <div className="flex items-center gap-3 mb-2">
+                          <div className={`rounded-[32px] p-5 border transition-all ${isDarkMode ? 'bg-white/5 border-white/10' : 'bg-white border-gray-100 shadow-sm'}`}>
+                             <div className="flex items-center gap-3 mb-4">
                                 <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center text-blue-500">
                                    <MapPin size={16} />
                                 </div>
-                                <p className="text-[11px] text-gray-400 font-black uppercase tracking-widest">Доставка</p>
+                                <p className="text-[11px] text-gray-400 font-black uppercase tracking-widest">Доставка и Получатель</p>
                              </div>
-                             <div className="space-y-1">
-                                <p className={`text-sm font-black ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                                   {DELIVERY_PROVIDERS.find(p => p.id === selectedProvider)?.name}
-                                </p>
-                                <p className={`text-xs font-medium leading-relaxed opacity-70 ${isDarkMode ? 'text-white/70' : 'text-gray-500'}`}>
-                                   {deliveryAddress}
-                                </p>
+                             
+                             <div className="space-y-4">
+                                <div className="space-y-1">
+                                   <p className={`text-sm font-black ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                      {DELIVERY_PROVIDERS.find(p => p.id === selectedProvider)?.name}
+                                   </p>
+                                   <p className={`text-xs font-medium leading-relaxed opacity-70 ${isDarkMode ? 'text-white/70' : 'text-gray-500'}`}>
+                                      {deliveryAddress}
+                                   </p>
+                                </div>
+
+                                <div className="h-px bg-gray-100 dark:bg-white/5" />
+
+                                <div className="grid grid-cols-1 gap-4">
+                                   <div className="space-y-1.5">
+                                      <label className="text-[9px] text-gray-400 font-black uppercase tracking-widest px-1">Получатель (ФИО)</label>
+                                      <input 
+                                         type="text"
+                                         value={recipientName}
+                                         onChange={(e) => setRecipientName(e.target.value)}
+                                         placeholder="Имя Отчество Фамилия"
+                                         className={`w-full px-4 py-3 rounded-2xl text-xs font-bold transition-all outline-none border ${
+                                            isDarkMode 
+                                               ? 'bg-white/5 border-white/10 text-white focus:border-pink-500/50' 
+                                               : 'bg-gray-50 border-gray-100 text-gray-900 focus:border-pink-500/50 focus:bg-white'
+                                         }`}
+                                      />
+                                   </div>
+                                   <div className="space-y-1.5">
+                                      <label className="text-[9px] text-gray-400 font-black uppercase tracking-widest px-1">Телефон</label>
+                                      <input 
+                                         type="tel"
+                                         value={recipientPhone}
+                                         onChange={(e) => setRecipientPhone(e.target.value)}
+                                         placeholder="+7 (___) ___-__-__"
+                                         className={`w-full px-4 py-3 rounded-2xl text-xs font-bold transition-all outline-none border ${
+                                            isDarkMode 
+                                               ? 'bg-white/5 border-white/10 text-white focus:border-pink-500/50' 
+                                               : 'bg-gray-50 border-gray-100 text-gray-900 focus:border-pink-500/50 focus:bg-white'
+                                         }`}
+                                      />
+                                   </div>
+                                </div>
                              </div>
                           </div>
 
