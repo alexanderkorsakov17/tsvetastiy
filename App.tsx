@@ -430,7 +430,8 @@ const PVZPickerContent: React.FC<{
       setLoading(true);
       ymapsInstance.geolocation.get({
         provider: 'yandex',
-        mapStateAutoApply: true
+        mapStateAutoApply: true,
+        enableHighAccuracy: true
       }).then((result: any) => {
         const coords = result.geoObjects.get(0).geometry.getCoordinates();
         setMapCenter(coords);
@@ -1375,7 +1376,7 @@ const AppContent: React.FC = () => {
             <div className="flex items-center gap-4 mb-2">
               <div className="w-16 h-16 bg-gradient-to-tr from-pink-300 to-amber-200 rounded-[24px] p-0.5 shadow-md"><img src={currentUser?.photo} className="w-full h-full object-cover rounded-[22px]" alt="Avatar" /></div>
               <div className="flex-1">
-                 <h2 className="text-lg font-black text-gray-900 uppercase tracking-tight leading-none">{currentUser?.fullName || currentUser?.name}</h2>
+                 <h2 className="text-lg font-black text-gray-900 tracking-tight leading-none">{currentUser?.fullName || currentUser?.name}</h2>
                  <p className="text-gray-400 text-[9px] font-bold uppercase tracking-widest mt-1 opacity-70">ID: {currentUser?.id}</p>
               </div>
               <div className="flex gap-2">
@@ -1448,36 +1449,6 @@ const AppContent: React.FC = () => {
 
               <div className="bg-white rounded-[28px] border border-gray-50 shadow-sm overflow-hidden">
                 <AccordionHeader 
-                  isOpen={isBonusHistoryExpanded} 
-                  onToggle={() => setIsBonusHistoryExpanded(!isBonusHistoryExpanded)} 
-                  icon={<Coins size={18} />} 
-                  title="История бонусов" 
-                  subtitle="Накопления" 
-                />
-                {isBonusHistoryExpanded && (
-                  <div className="p-4 space-y-2.5 animate-fadeIn border-t border-gray-50 bg-gray-50/20">
-                    {bonusTransactions.length > 0 ? bonusTransactions.map(bt => (
-                      <div key={bt.id} className="flex items-center justify-between p-3 bg-white rounded-2xl border border-gray-50">
-                        <div className="flex items-center gap-3">
-                           <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${bt.type === 'spend' ? 'bg-red-50 text-red-400' : 'bg-green-50 text-green-500'}`}>{bt.type === 'spend' ? <Repeat size={14} /> : <TrendingUp size={14} />}</div>
-                           <div><p className="text-[10px] font-bold text-gray-900">{bt.description}</p><p className="text-[8px] text-gray-400 font-medium">{bt.date}</p></div>
-                        </div>
-                        <p className={`text-[11px] font-black ${bt.type === 'spend' ? 'text-red-400' : 'text-green-500'}`}>{bt.type === 'spend' ? '-' : '+'}{bt.amount}</p>
-                      </div>
-                    )) : (
-                      <div className="text-center py-8">
-                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3 text-gray-400">
-                          <Coins size={24} />
-                        </div>
-                        <p className="text-xs text-gray-400 font-medium">У вас пока нет истории бонусов</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-white rounded-[28px] border border-gray-50 shadow-sm overflow-hidden">
-                <AccordionHeader 
                   isOpen={isAffiliateExpanded} 
                   onToggle={() => setIsAffiliateExpanded(!isAffiliateExpanded)} 
                   icon={<HeartHandshake size={18} />} 
@@ -1514,6 +1485,36 @@ const AppContent: React.FC = () => {
                       <Users size={16} />
                       Список приглашенных
                     </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-white rounded-[28px] border border-gray-50 shadow-sm overflow-hidden">
+                <AccordionHeader 
+                  isOpen={isBonusHistoryExpanded} 
+                  onToggle={() => setIsBonusHistoryExpanded(!isBonusHistoryExpanded)} 
+                  icon={<Coins size={18} />} 
+                  title="История бонусов" 
+                  subtitle="Накопления" 
+                />
+                {isBonusHistoryExpanded && (
+                  <div className="p-4 space-y-2.5 animate-fadeIn border-t border-gray-50 bg-gray-50/20">
+                    {bonusTransactions.length > 0 ? bonusTransactions.map(bt => (
+                      <div key={bt.id} className="flex items-center justify-between p-3 bg-white rounded-2xl border border-gray-50">
+                        <div className="flex items-center gap-3">
+                           <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${bt.type === 'spend' ? 'bg-red-50 text-red-400' : 'bg-green-50 text-green-500'}`}>{bt.type === 'spend' ? <Repeat size={14} /> : <TrendingUp size={14} />}</div>
+                           <div><p className="text-[10px] font-bold text-gray-900">{bt.description}</p><p className="text-[8px] text-gray-400 font-medium">{bt.date}</p></div>
+                        </div>
+                        <p className={`text-[11px] font-black ${bt.type === 'spend' ? 'text-red-400' : 'text-green-500'}`}>{bt.type === 'spend' ? '-' : '+'}{bt.amount}</p>
+                      </div>
+                    )) : (
+                      <div className="text-center py-8">
+                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3 text-gray-400">
+                          <Coins size={24} />
+                        </div>
+                        <p className="text-xs text-gray-400 font-medium">У вас пока нет истории бонусов</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1701,14 +1702,14 @@ const AppContent: React.FC = () => {
                        <div className="text-center shrink-0">
                           <h3 className={`text-sm font-black uppercase mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Выберите пункт выдачи</h3>
                           <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                            {DELIVERY_PROVIDERS.find(p => p.id === selectedProvider)?.name} • {currentUser?.city || 'Ваш город'}
+                            {DELIVERY_PROVIDERS.find(p => p.id === selectedProvider)?.name} • {currentUser?.location || currentUser?.city || 'Ваш город'}
                           </p>
                        </div>
                        
                        <div className="flex-1 min-h-0">
                          <PVZPicker 
                            providerId={selectedProvider || ''} 
-                           city={currentUser?.city || 'Москва'} 
+                           city={currentUser?.location || currentUser?.city || 'Москва'} 
                            onSelect={(address) => setDeliveryAddress(address)}
                            isDarkMode={isDarkMode}
                          />
@@ -1995,7 +1996,7 @@ const AppContent: React.FC = () => {
              </header>
              <div className="space-y-6">
                 <div className="space-y-1.5">
-                   <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Имя и Фамилия</label>
+                   <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Имя и Фамилия (на русском)</label>
                    <input type="text" value={editFullName} onChange={(e) => setEditFullName(e.target.value)} placeholder="Иван Иванов" className="w-full bg-gray-50 border border-gray-100 rounded-[20px] px-5 py-4 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-100 transition-all" />
                 </div>
                 <div className="space-y-1.5">
