@@ -53,8 +53,6 @@ const ORDER_STATUSES = [
   { id: 'received', label: 'Дома', color: 'bg-gray-400' },
 ];
 
-import { storage } from './firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 export const AdminPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'users'>('products');

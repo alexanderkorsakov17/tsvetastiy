@@ -94,7 +94,7 @@ const s3Client = new S3Client({
 const upload = multer({ storage: multer.memoryStorage() });
 
 // Admin API: Upload Image to S3
-app.post("/api/admin/upload", upload.single("image"), async (req, res) => {
+app.post("/api/admin/upload", upload.single("image"), async (req: any, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
