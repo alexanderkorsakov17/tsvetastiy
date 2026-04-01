@@ -5,6 +5,16 @@ import _cookieSession from "cookie-session";
 
 const cookieSession = (_cookieSession as any).default || _cookieSession;
 
+import { initializeApp } from "firebase/app";
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where, orderBy, limit, addDoc, serverTimestamp } from "firebase/firestore";
+
+// Import the Firebase configuration
+import firebaseConfig from "../firebase-applet-config.json" with { type: "json" };
+
+// Initialize Firebase SDK
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+
 const app = express();
 const PORT = 3000;
 
@@ -48,7 +58,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 // Admin Secret Path
 const ADMIN_SECRET = "admin-secret-9922";
 
-// In-memory data store
+// In-memory data store (only products remain for now, but could also be moved)
 let products = [
   {
     id: '1',
@@ -119,70 +129,8 @@ let products = [
 ];
 
 let orders: any[] = [];
-let users: any[] = [
-  {
-    id: "mock_user_1",
-    name: "Анна",
-    fullName: "Анна Иванова",
-    photo: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=150&h=150&auto=format&fit=crop",
-    city: "Москва",
-    birthDate: "15.05.1995",
-    email: "anna@example.com",
-    tgId: "@anna_ivanova",
-    orderCount: 5,
-    bonusBalance: 1250,
-    createdAt: "01.01.2024"
-  },
-  {
-    id: "mock_user_2",
-    name: "Дмитрий",
-    fullName: "Дмитрий Петров",
-    photo: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=150&h=150&auto=format&fit=crop",
-    city: "Санкт-Петербург",
-    birthDate: "20.10.1988",
-    email: "dima@example.com",
-    tgId: "@dima_p",
-    orderCount: 2,
-    bonusBalance: 450,
-    invitedBy: "mock_user_1",
-    createdAt: "10.01.2024"
-  },
-  {
-    id: "mock_user_3",
-    name: "Елена",
-    fullName: "Елена Сидорова",
-    photo: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=150&h=150&auto=format&fit=crop",
-    city: "Казань",
-    birthDate: "05.03.1992",
-    email: "elena@example.com",
-    tgId: "@elena_s",
-    orderCount: 1,
-    bonusBalance: 300,
-    invitedBy: "mock_user_2",
-    createdAt: "15.01.2024"
-  },
-  {
-    id: "mock_user_4",
-    name: "Сергей",
-    fullName: "Сергей Волков",
-    photo: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=150&h=150&auto=format&fit=crop",
-    city: "Екатеринбург",
-    birthDate: "12.12.1985",
-    email: "sergey@example.com",
-    tgId: "@sergey_v",
-    orderCount: 0,
-    bonusBalance: 100,
-    invitedBy: "mock_user_1",
-    createdAt: "20.01.2024"
-  }
-];
-
-let bonusHistory: any[] = [
-  { id: "h1", userId: "mock_user_1", type: "referral", amount: 100, description: "Бонус за приглашение Дмитрия (Уровень 1)", date: "10.01.2024" },
-  { id: "h2", userId: "mock_user_1", type: "referral", amount: 50, description: "Бонус за приглашение Елены (Уровень 2)", date: "15.01.2024" },
-  { id: "h3", userId: "mock_user_2", type: "referral", amount: 100, description: "Бонус за приглашение Елены (Уровень 1)", date: "15.01.2024" },
-  { id: "h4", userId: "mock_user_1", type: "earn", amount: 45, description: "Кэшбэк за заказ #12345", date: "05.02.2024" },
-];
+let users: any[] = [];
+let bonusHistory: any[] = [];
 
 // Health check
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
@@ -193,115 +141,160 @@ app.get("/api/products", (req, res) => {
 });
 
 // Public API: Create Order
-app.post("/api/orders", (req, res) => {
+app.post("/api/orders", async (req, res) => {
   const user = req.session?.user;
   const { total, bonusUsed = 0 } = req.body;
   
+  const orderId = Math.floor(Math.random() * 90000 + 10000).toString();
   const order = {
     ...req.body,
-    id: Math.floor(Math.random() * 90000 + 10000).toString(),
+    id: orderId,
     date: new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }),
     status: 'created',
     userId: user?.id || 'anonymous',
     userName: user?.fullName || 'Гость',
     userContact: user?.email || user?.tgId || 'Нет контактов'
   };
-  orders.unshift(order);
 
-  // Update user balance if bonuses were used
-  if (user && bonusUsed > 0) {
-    const userIdx = users.findIndex(u => u.id === user.id);
-    if (userIdx !== -1) {
-      users[userIdx].bonusBalance -= bonusUsed;
-      bonusHistory.unshift({
-        id: Date.now().toString() + Math.random(),
-        userId: user.id,
-        type: 'spend',
-        amount: bonusUsed,
-        description: `Оплата баллами заказа #${order.id}`,
-        date: new Date().toLocaleDateString('ru-RU')
-      });
-      // Update session user
-      req.session!.user = users[userIdx];
-    }
-  }
+  try {
+    await setDoc(doc(db, "orders", orderId), order);
 
-  // Cashback Logic
-  if (user) {
-    const cashback = Math.round(order.total * 0.05);
-    if (cashback > 0) {
-      const userIdx = users.findIndex(u => u.id === user.id);
-      if (userIdx !== -1) {
-        users[userIdx].bonusBalance += cashback;
-        bonusHistory.unshift({
-          id: Date.now().toString() + Math.random(),
+    // Update user balance if bonuses were used
+    if (user && bonusUsed > 0) {
+      const userRef = doc(db, "users", user.id);
+      const userDoc = await getDoc(userRef);
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        const newBalance = (userData.bonusBalance || 0) - bonusUsed;
+        await updateDoc(userRef, { bonusBalance: newBalance });
+        
+        const transactionId = Date.now().toString() + Math.random();
+        await setDoc(doc(db, "bonusHistory", transactionId), {
+          id: transactionId,
           userId: user.id,
-          type: 'earn',
-          amount: cashback,
-          description: `Кэшбэк за заказ #${order.id}`,
+          type: 'spend',
+          amount: bonusUsed,
+          description: `Оплата баллами заказа #${orderId}`,
           date: new Date().toLocaleDateString('ru-RU')
         });
+        
         // Update session user
-        req.session!.user = users[userIdx];
+        req.session!.user = { ...userData, bonusBalance: newBalance };
       }
     }
-  }
 
-  // Referral Bonus Logic
-  if (user && user.invitedBy) {
-    const awardBonus = (inviterId: string, amount: number, level: number, buyerName: string) => {
-      const inviterIdx = users.findIndex(u => u.id === inviterId);
-      if (inviterIdx !== -1) {
-        users[inviterIdx].bonusBalance += amount;
-        bonusHistory.unshift({
-          id: Date.now().toString() + Math.random(),
-          userId: inviterId,
-          type: 'referral',
-          amount,
-          description: `Бонус за заказ ${buyerName} (L${level})`,
-          date: new Date().toLocaleDateString('ru-RU')
-        });
-        return users[inviterIdx].invitedBy;
+    // Cashback Logic
+    if (user) {
+      const cashback = Math.round(order.total * 0.05);
+      if (cashback > 0) {
+        const userRef = doc(db, "users", user.id);
+        const userDoc = await getDoc(userRef);
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          const newBalance = (userData.bonusBalance || 0) + cashback;
+          await updateDoc(userRef, { 
+            bonusBalance: newBalance,
+            orderCount: (userData.orderCount || 0) + 1
+          });
+          
+          const transactionId = Date.now().toString() + Math.random();
+          await setDoc(doc(db, "bonusHistory", transactionId), {
+            id: transactionId,
+            userId: user.id,
+            type: 'earn',
+            amount: cashback,
+            description: `Кэшбэк за заказ #${orderId}`,
+            date: new Date().toLocaleDateString('ru-RU')
+          });
+          
+          // Update session user
+          req.session!.user = { ...userData, bonusBalance: newBalance, orderCount: (userData.orderCount || 0) + 1 };
+        }
       }
-      return null;
-    };
+    }
 
-    const l1Bonus = Math.round(order.total * 0.1);
-    const l2Bonus = Math.round(order.total * 0.05);
-    const l3Bonus = Math.round(order.total * 0.02);
+    // Referral Bonus Logic
+    if (user && user.invitedBy) {
+      const awardBonus = async (inviterId: string, amount: number, level: number, buyerName: string) => {
+        const inviterRef = doc(db, "users", inviterId);
+        const inviterDoc = await getDoc(inviterRef);
+        if (inviterDoc.exists()) {
+          const inviterData = inviterDoc.data();
+          const newBalance = (inviterData.bonusBalance || 0) + amount;
+          await updateDoc(inviterRef, { bonusBalance: newBalance });
+          
+          const transactionId = Date.now().toString() + Math.random();
+          await setDoc(doc(db, "bonusHistory", transactionId), {
+            id: transactionId,
+            userId: inviterId,
+            type: 'referral',
+            amount,
+            description: `Бонус за заказ ${buyerName} (L${level})`,
+            date: new Date().toLocaleDateString('ru-RU')
+          });
+          return inviterData.invitedBy;
+        }
+        return null;
+      };
 
-    const l1InviterId = user.invitedBy;
-    const l2InviterId = l1InviterId ? awardBonus(l1InviterId, l1Bonus, 1, user.fullName) : null;
-    const l3InviterId = l2InviterId ? awardBonus(l2InviterId, l2Bonus, 2, user.fullName) : null;
-    if (l3InviterId) awardBonus(l3InviterId, l3Bonus, 3, user.fullName);
+      const l1Bonus = Math.round(order.total * 0.1);
+      const l2Bonus = Math.round(order.total * 0.05);
+      const l3Bonus = Math.round(order.total * 0.02);
+
+      const l1InviterId = user.invitedBy;
+      const l2InviterId = l1InviterId ? await awardBonus(l1InviterId, l1Bonus, 1, user.fullName) : null;
+      const l3InviterId = l2InviterId ? await awardBonus(l2InviterId, l2Bonus, 2, user.fullName) : null;
+      if (l3InviterId) await awardBonus(l3InviterId, l3Bonus, 3, user.fullName);
+    }
+
+    res.json(order);
+  } catch (error) {
+    console.error("Error creating order:", error);
+    res.status(500).json({ error: "Failed to create order" });
   }
-
-  res.json(order);
 });
 
 // Public API: Get My Orders
-app.get("/api/orders/my", (req, res) => {
+app.get("/api/orders/my", async (req, res) => {
   const userId = req.session?.user?.id;
   if (!userId) return res.json([]);
-  const myOrders = orders.filter(o => o.userId === userId);
-  res.json(myOrders);
+  
+  try {
+    const q = query(collection(db, "orders"), where("userId", "==", userId));
+    const querySnapshot = await getDocs(q);
+    const myOrders = querySnapshot.docs.map(doc => doc.data());
+    res.json(myOrders);
+  } catch (error) {
+    console.error("Error fetching my orders:", error);
+    res.status(500).json({ error: "Failed to fetch orders" });
+  }
 });
 
 // Admin API: Get All Orders
-app.get("/api/admin/orders", (req, res) => {
-  res.json(orders);
+app.get("/api/admin/orders", async (req, res) => {
+  try {
+    const querySnapshot = await getDocs(collection(db, "orders"));
+    const allOrders = querySnapshot.docs.map(doc => doc.data());
+    res.json(allOrders);
+  } catch (error) {
+    console.error("Error fetching all orders:", error);
+    res.status(500).json({ error: "Failed to fetch orders" });
+  }
 });
 
 // Admin API: Update Order Status
-app.patch("/api/admin/orders/:id", (req, res) => {
+app.patch("/api/admin/orders/:id", async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
-  const orderIndex = orders.findIndex(o => o.id === id);
-  if (orderIndex !== -1) {
-    orders[orderIndex].status = status;
-    res.json(orders[orderIndex]);
-  } else {
-    res.status(404).send("Order not found");
+  
+  try {
+    const orderRef = doc(db, "orders", id);
+    await updateDoc(orderRef, { status });
+    const updatedDoc = await getDoc(orderRef);
+    res.json(updatedDoc.data());
+  } catch (error) {
+    console.error("Error updating order status:", error);
+    res.status(500).json({ error: "Failed to update order" });
   }
 });
 
@@ -330,60 +323,99 @@ app.delete("/api/admin/products/:id", (req, res) => {
 });
 
 // User API: Get My Bonus History
-app.get("/api/users/me/history", (req, res) => {
+app.get("/api/users/me/history", async (req, res) => {
   const user = req.session?.user;
   if (!user) {
     return res.status(401).json({ error: "Unauthorized" });
   }
-  const history = bonusHistory.filter(h => h.userId === user.id);
-  res.json(history);
+  try {
+    const q = query(collection(db, "bonusHistory"), where("userId", "==", user.id));
+    const querySnapshot = await getDocs(q);
+    const history = querySnapshot.docs.map(doc => doc.data());
+    res.json(history);
+  } catch (error) {
+    console.error("Error fetching bonus history:", error);
+    res.status(500).json({ error: "Failed to fetch history" });
+  }
 });
 
 // User API: Get My Referrals
-app.get("/api/users/me/referrals", (req, res) => {
+app.get("/api/users/me/referrals", async (req, res) => {
   const user = req.session?.user;
   if (!user) {
     return res.status(401).json({ error: "Unauthorized" });
   }
-  const referrals = users.filter(u => u.invitedBy === user.id);
-  res.json(referrals);
+  try {
+    const q = query(collection(db, "users"), where("invitedBy", "==", user.id));
+    const querySnapshot = await getDocs(q);
+    const referrals = querySnapshot.docs.map(doc => doc.data());
+    res.json(referrals);
+  } catch (error) {
+    console.error("Error fetching referrals:", error);
+    res.status(500).json({ error: "Failed to fetch referrals" });
+  }
 });
 
 // Admin API: Get All Users
-app.get("/api/admin/users", (req, res) => {
-  res.json(users);
+app.get("/api/admin/users", async (req, res) => {
+  try {
+    const querySnapshot = await getDocs(collection(db, "users"));
+    const allUsers = querySnapshot.docs.map(doc => doc.data());
+    res.json(allUsers);
+  } catch (error) {
+    console.error("Error fetching all users:", error);
+    res.status(500).json({ error: "Failed to fetch users" });
+  }
 });
 
 // Admin API: Get User Bonus History
-app.get("/api/admin/users/:id/history", (req, res) => {
+app.get("/api/admin/users/:id/history", async (req, res) => {
   const { id } = req.params;
-  const history = bonusHistory.filter(h => h.userId === id);
-  res.json(history);
+  try {
+    const q = query(collection(db, "bonusHistory"), where("userId", "==", id));
+    const querySnapshot = await getDocs(q);
+    const history = querySnapshot.docs.map(doc => doc.data());
+    res.json(history);
+  } catch (error) {
+    console.error("Error fetching user bonus history:", error);
+    res.status(500).json({ error: "Failed to fetch history" });
+  }
 });
 
 // Admin API: Adjust User Bonuses
-app.patch("/api/admin/users/:id/bonuses", (req, res) => {
+app.patch("/api/admin/users/:id/bonuses", async (req, res) => {
   const { id } = req.params;
   const { amount, description, type = 'manual' } = req.body;
-  const userIndex = users.findIndex(u => u.id === id);
   
-  if (userIndex !== -1) {
-    const adjustment = Number(amount);
-    users[userIndex].bonusBalance += adjustment;
+  try {
+    const userRef = doc(db, "users", id);
+    const userDoc = await getDoc(userRef);
     
-    const transaction = {
-      id: Date.now().toString(),
-      userId: id,
-      type,
-      amount: Math.abs(adjustment),
-      description: description || (adjustment > 0 ? 'Начисление баллов администратором' : 'Списание баллов администратором'),
-      date: new Date().toLocaleDateString('ru-RU')
-    };
-    bonusHistory.unshift(transaction);
-    
-    res.json({ user: users[userIndex], transaction });
-  } else {
-    res.status(404).send("User not found");
+    if (userDoc.exists()) {
+      const userData = userDoc.data();
+      const adjustment = Number(amount);
+      const newBalance = (userData.bonusBalance || 0) + adjustment;
+      
+      await updateDoc(userRef, { bonusBalance: newBalance });
+      
+      const transactionId = Date.now().toString();
+      const transaction = {
+        id: transactionId,
+        userId: id,
+        type,
+        amount: Math.abs(adjustment),
+        description: description || (adjustment > 0 ? 'Начисление баллов администратором' : 'Списание баллов администратором'),
+        date: new Date().toLocaleDateString('ru-RU')
+      };
+      await setDoc(doc(db, "bonusHistory", transactionId), transaction);
+      
+      res.json({ user: { ...userData, bonusBalance: newBalance }, transaction });
+    } else {
+      res.status(404).send("User not found");
+    }
+  } catch (error) {
+    console.error("Error adjusting bonuses:", error);
+    res.status(500).json({ error: "Failed to adjust bonuses" });
   }
 });
 
@@ -471,7 +503,8 @@ app.post("/api/auth/vkid", async (req, res) => {
     const vkId = vkUser.user_id.toString();
     const { invitedBy } = req.body;
 
-    let existingUser = users.find(u => u.id === vkId);
+    let existingUserDoc = await getDoc(doc(db, "users", vkId));
+    let existingUser = existingUserDoc.exists() ? existingUserDoc.data() : null;
     
     if (!existingUser) {
       existingUser = {
@@ -488,16 +521,21 @@ app.post("/api/auth/vkid", async (req, res) => {
         invitedBy: invitedBy || undefined,
         createdAt: new Date().toLocaleDateString('ru-RU')
       };
-      users.push(existingUser);
+      await setDoc(doc(db, "users", vkId), existingUser);
 
       // If user was invited, give bonus to inviter
       if (invitedBy) {
-        const inviterIdx = users.findIndex(u => u.id === invitedBy);
-        if (inviterIdx !== -1) {
+        const inviterRef = doc(db, "users", invitedBy);
+        const inviterDoc = await getDoc(inviterRef);
+        if (inviterDoc.exists()) {
+          const inviterData = inviterDoc.data();
           const bonusAmount = 100; // Registration bonus
-          users[inviterIdx].bonusBalance += bonusAmount;
-          bonusHistory.unshift({
-            id: Date.now().toString() + Math.random(),
+          const newBalance = (inviterData.bonusBalance || 0) + bonusAmount;
+          await updateDoc(inviterRef, { bonusBalance: newBalance });
+          
+          const transactionId = Date.now().toString() + Math.random();
+          await setDoc(doc(db, "bonusHistory", transactionId), {
+            id: transactionId,
             userId: invitedBy,
             type: 'referral',
             amount: bonusAmount,
@@ -521,16 +559,19 @@ app.post("/api/auth/vkid", async (req, res) => {
 });
 
 // Update profile
-app.patch("/api/auth/profile", (req, res) => {
+app.patch("/api/auth/profile", async (req, res) => {
   if (req.session?.user) {
-    const userIdx = users.findIndex(u => u.id === req.session!.user!.id);
-    if (userIdx !== -1) {
-      users[userIdx] = { ...users[userIdx], ...req.body };
-      req.session.user = users[userIdx];
-    } else {
-      req.session.user = { ...req.session.user, ...req.body };
+    const userId = req.session.user.id;
+    try {
+      const userRef = doc(db, "users", userId);
+      await updateDoc(userRef, req.body);
+      const updatedDoc = await getDoc(userRef);
+      req.session.user = updatedDoc.data();
+      res.json({ user: req.session.user });
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      res.status(500).json({ error: "Failed to update profile" });
     }
-    res.json({ user: req.session.user });
   } else {
     res.status(401).json({ error: "Unauthorized" });
   }
@@ -543,7 +584,7 @@ app.post("/api/auth/logout", (req, res) => {
 });
 
 // Mock Login (Temporary bypass)
-app.post("/api/auth/mock", (req, res) => {
+app.post("/api/auth/mock", async (req, res) => {
   console.log("Mock login request received. Session exists:", !!req.session);
   const mockUser = {
     id: "mock_user_123",
@@ -559,13 +600,20 @@ app.post("/api/auth/mock", (req, res) => {
     createdAt: "01.01.2024"
   };
 
-  const existingUserIdx = users.findIndex(u => u.id === mockUser.id);
-  if (existingUserIdx === -1) {
-    users.push(mockUser);
+  try {
+    const userRef = doc(db, "users", mockUser.id);
+    const userDoc = await getDoc(userRef);
+    if (!userDoc.exists()) {
+      await setDoc(userRef, mockUser);
+    }
+    
+    const finalUser = (await getDoc(userRef)).data();
+    req.session!.user = finalUser;
+    res.json({ user: finalUser });
+  } catch (error) {
+    console.error("Mock login error:", error);
+    res.status(500).json({ error: "Failed to mock login" });
   }
-
-  req.session!.user = users.find(u => u.id === mockUser.id);
-  res.json({ user: req.session!.user });
 });
 
 // Server initialization

@@ -1,0 +1,139 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId
+    // Fields:
+    //   - id: string (required)
+    //   - name: string (required)
+    //   - fullName: string (required)
+    //   - photo: string
+    //   - city: string
+    //   - birthDate: string
+    //   - email: string (required)
+    //   - tgId: string
+    //   - orderCount: number
+    //   - bonusBalance: number
+    //   - invitedBy: string
+    //   - createdAt: string
+    //
+    // Collection: orders
+    // Document ID: orderId
+    // Fields:
+    //   - id: string (required)
+    //   - date: string (required)
+    //   - total: number (required)
+    //   - status: string (required)
+    //   - items: list (required)
+    //   - userId: string (required)
+    //   - userName: string (required)
+    //   - userContact: string (required)
+    //   - bonusUsed: number
+    //
+    // Collection: bonusHistory
+    // Document ID: transactionId
+    // Fields:
+    //   - id: string (required)
+    //   - userId: string (required)
+    //   - type: string (required, enum: earn, spend, referral, manual)
+    //   - amount: number (required)
+    //   - description: string (required)
+    //   - date: string (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "alexkors1703@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(['id', 'name', 'fullName', 'email']) &&
+             data.id is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.fullName is string && data.fullName.size() > 0 && data.fullName.size() < 200 &&
+             data.email is string && data.email.size() > 0 && data.email.size() < 200 &&
+             (data.bonusBalance == null || data.bonusBalance is number) &&
+             (data.orderCount == null || data.orderCount is number);
+    }
+
+    function isValidOrder(data) {
+      return hasRequiredFields(['id', 'userId', 'total', 'status']) &&
+             data.id is string &&
+             data.userId is string &&
+             data.total is number && data.total >= 0 &&
+             data.status in ['created', 'shipped', 'delivered', 'received'] &&
+             data.items is list;
+    }
+
+    function isValidBonusTransaction(data) {
+      return hasRequiredFields(['id', 'userId', 'type', 'amount', 'date']) &&
+             data.id is string &&
+             data.userId is string &&
+             data.type in ['earn', 'spend', 'referral', 'manual'] &&
+             data.amount is number && data.amount >= 0 &&
+             data.date is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || isAdmin());
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidOrder(request.resource.data) && (request.resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /bonusHistory/{transactionId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAdmin(); // Only admin or server-side logic (which we'll handle) should create these
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Allow public read for products if they were in Firestore, but they are in-memory for now.
+    // If we move products to Firestore:
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

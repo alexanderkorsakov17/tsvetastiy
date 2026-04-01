@@ -934,6 +934,7 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     if (isLoggedIn) {
+      fetchReferrals();
       fetch('/api/users/me/history')
         .then(res => res.json())
         .then(data => {
@@ -955,11 +956,11 @@ const AppContent: React.FC = () => {
   const categories = ['Все', ...Object.values(Category)];
   const referralLink = isLoggedIn && currentUser ? `${window.location.origin}?ref=${currentUser.id}` : "Войдите, чтобы получить ссылку";
   const affiliateStats = {
-    balance: currentUser?.balance || 0,
+    balance: currentUser?.bonusBalance || 0,
     levels: [
-      { id: 1, name: '1 Уровень', percent: 5, count: referrals.length, earned: 520, icon: <Zap size={14} /> },
-      { id: 2, name: '2 Уровень', percent: 3, count: 14, earned: 210, icon: <Target size={14} /> },
-      { id: 3, name: '3 Уровень', percent: 2, count: 32, earned: 110, icon: <Award size={14} /> }
+      { id: 1, name: '1 Уровень', percent: 5, count: referrals.length, earned: bonusTransactions.filter(t => t.type === 'referral' && t.description.includes('(L1)')).reduce((acc, t) => acc + t.amount, 0), icon: <Zap size={14} /> },
+      { id: 2, name: '2 Уровень', percent: 3, count: 0, earned: bonusTransactions.filter(t => t.type === 'referral' && t.description.includes('(L2)')).reduce((acc, t) => acc + t.amount, 0), icon: <Target size={14} /> },
+      { id: 3, name: '3 Уровень', percent: 2, count: 0, earned: bonusTransactions.filter(t => t.type === 'referral' && t.description.includes('(L3)')).reduce((acc, t) => acc + t.amount, 0), icon: <Award size={14} /> }
     ]
   };
 

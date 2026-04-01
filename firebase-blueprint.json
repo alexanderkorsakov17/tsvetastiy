@@ -1,0 +1,69 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "fullName": { "type": "string" },
+        "photo": { "type": "string" },
+        "city": { "type": "string" },
+        "birthDate": { "type": "string" },
+        "email": { "type": "string" },
+        "tgId": { "type": "string" },
+        "orderCount": { "type": "number" },
+        "bonusBalance": { "type": "number" },
+        "invitedBy": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "fullName", "email"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer order",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "total": { "type": "number" },
+        "status": { "type": "string" },
+        "items": { "type": "array", "items": { "type": "string" } },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userContact": { "type": "string" },
+        "bonusUsed": { "type": "number" }
+      },
+      "required": ["id", "userId", "total", "status"]
+    },
+    "BonusTransaction": {
+      "title": "BonusTransaction",
+      "description": "Bonus points transaction",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["earn", "spend", "referral", "manual"] },
+        "amount": { "type": "number" },
+        "description": { "type": "string" },
+        "date": { "type": "string" }
+      },
+      "required": ["id", "userId", "type", "amount", "date"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Customer orders"
+    },
+    "/bonusHistory/{transactionId}": {
+      "schema": "BonusTransaction",
+      "description": "Bonus point history"
+    }
+  }
+}
