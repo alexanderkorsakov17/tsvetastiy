@@ -33,6 +33,7 @@ if (!admin.apps.length) {
 }
 
 const db = getFirestore(admin.apps[0], firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)' ? firebaseConfig.firestoreDatabaseId : undefined);
+db.settings({ ignoreUndefinedProperties: true });
 
 const app = express();
 const PORT = 3000;
@@ -535,7 +536,7 @@ app.post("/api/auth/vkid", async (req, res) => {
         tgId: "",
         orderCount: 0,
         bonusBalance: 0,
-        invitedBy: invitedBy || undefined,
+        invitedBy: invitedBy || null,
         createdAt: new Date().toLocaleDateString('ru-RU')
       };
       await userRef.set(existingUser);
