@@ -5,15 +5,33 @@ import _cookieSession from "cookie-session";
 
 const cookieSession = (_cookieSession as any).default || _cookieSession;
 
-import { initializeApp } from "firebase/app";
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where, orderBy, limit, addDoc, serverTimestamp } from "firebase/firestore";
+import admin from "firebase-admin";
 
 // Import the Firebase configuration
 import firebaseConfig from "../firebase-applet-config.json" with { type: "json" };
 
-// Initialize Firebase SDK
-const firebaseApp = initializeApp(firebaseConfig);
-const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+// Initialize Firebase Admin SDK
+if (!admin.apps.length) {
+  const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT 
+    ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT) 
+    : null;
+
+  if (serviceAccount) {
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      projectId: firebaseConfig.projectId
+    });
+    console.log("Firebase Admin initialized with Service Account");
+  } else {
+    // Fallback for local dev or if key is missing (will still fail if rules are strict)
+    admin.initializeApp({
+      projectId: firebaseConfig.projectId
+    });
+    console.log("Firebase Admin initialized with Project ID only (no Service Account)");
+  }
+}
+
+const db = admin.firestore(firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)' ? firebaseConfig.firestoreDatabaseId : undefined);
 
 const app = express();
 const PORT = 3000;
@@ -157,19 +175,20 @@ app.post("/api/orders", async (req, res) => {
   };
 
   try {
-    await setDoc(doc(db, "orders", orderId), order);
+    const orderRef = db.collection("orders").doc(orderId);
+    await orderRef.set(order);
 
     // Update user balance if bonuses were used
     if (user && bonusUsed > 0) {
-      const userRef = doc(db, "users", user.id);
-      const userDoc = await getDoc(userRef);
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
+      const userRef = db.collection("users").doc(user.id);
+      const userDoc = await userRef.get();
+      if (userDoc.exists) {
+        const userData = userDoc.data()!;
         const newBalance = (userData.bonusBalance || 0) - bonusUsed;
-        await updateDoc(userRef, { bonusBalance: newBalance });
+        await userRef.update({ bonusBalance: newBalance });
         
         const transactionId = Date.now().toString() + Math.random();
-        await setDoc(doc(db, "bonusHistory", transactionId), {
+        await db.collection("bonusHistory").doc(transactionId).set({
           id: transactionId,
           userId: user.id,
           type: 'spend',
@@ -187,18 +206,18 @@ app.post("/api/orders", async (req, res) => {
     if (user) {
       const cashback = Math.round(order.total * 0.05);
       if (cashback > 0) {
-        const userRef = doc(db, "users", user.id);
-        const userDoc = await getDoc(userRef);
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
+        const userRef = db.collection("users").doc(user.id);
+        const userDoc = await userRef.get();
+        if (userDoc.exists) {
+          const userData = userDoc.data()!;
           const newBalance = (userData.bonusBalance || 0) + cashback;
-          await updateDoc(userRef, { 
+          await userRef.update({ 
             bonusBalance: newBalance,
             orderCount: (userData.orderCount || 0) + 1
           });
           
           const transactionId = Date.now().toString() + Math.random();
-          await setDoc(doc(db, "bonusHistory", transactionId), {
+          await db.collection("bonusHistory").doc(transactionId).set({
             id: transactionId,
             userId: user.id,
             type: 'earn',
@@ -216,15 +235,15 @@ app.post("/api/orders", async (req, res) => {
     // Referral Bonus Logic
     if (user && user.invitedBy) {
       const awardBonus = async (inviterId: string, amount: number, level: number, buyerName: string) => {
-        const inviterRef = doc(db, "users", inviterId);
-        const inviterDoc = await getDoc(inviterRef);
-        if (inviterDoc.exists()) {
-          const inviterData = inviterDoc.data();
+        const inviterRef = db.collection("users").doc(inviterId);
+        const inviterDoc = await inviterRef.get();
+        if (inviterDoc.exists) {
+          const inviterData = inviterDoc.data()!;
           const newBalance = (inviterData.bonusBalance || 0) + amount;
-          await updateDoc(inviterRef, { bonusBalance: newBalance });
+          await inviterRef.update({ bonusBalance: newBalance });
           
           const transactionId = Date.now().toString() + Math.random();
-          await setDoc(doc(db, "bonusHistory", transactionId), {
+          await db.collection("bonusHistory").doc(transactionId).set({
             id: transactionId,
             userId: inviterId,
             type: 'referral',
@@ -260,8 +279,7 @@ app.get("/api/orders/my", async (req, res) => {
   if (!userId) return res.json([]);
   
   try {
-    const q = query(collection(db, "orders"), where("userId", "==", userId));
-    const querySnapshot = await getDocs(q);
+    const querySnapshot = await db.collection("orders").where("userId", "==", userId).get();
     const myOrders = querySnapshot.docs.map(doc => doc.data());
     res.json(myOrders);
   } catch (error) {
@@ -273,7 +291,7 @@ app.get("/api/orders/my", async (req, res) => {
 // Admin API: Get All Orders
 app.get("/api/admin/orders", async (req, res) => {
   try {
-    const querySnapshot = await getDocs(collection(db, "orders"));
+    const querySnapshot = await db.collection("orders").get();
     const allOrders = querySnapshot.docs.map(doc => doc.data());
     res.json(allOrders);
   } catch (error) {
@@ -288,9 +306,9 @@ app.patch("/api/admin/orders/:id", async (req, res) => {
   const { status } = req.body;
   
   try {
-    const orderRef = doc(db, "orders", id);
-    await updateDoc(orderRef, { status });
-    const updatedDoc = await getDoc(orderRef);
+    const orderRef = db.collection("orders").doc(id);
+    await orderRef.update({ status });
+    const updatedDoc = await orderRef.get();
     res.json(updatedDoc.data());
   } catch (error) {
     console.error("Error updating order status:", error);
@@ -329,8 +347,7 @@ app.get("/api/users/me/history", async (req, res) => {
     return res.status(401).json({ error: "Unauthorized" });
   }
   try {
-    const q = query(collection(db, "bonusHistory"), where("userId", "==", user.id));
-    const querySnapshot = await getDocs(q);
+    const querySnapshot = await db.collection("bonusHistory").where("userId", "==", user.id).get();
     const history = querySnapshot.docs.map(doc => doc.data());
     res.json(history);
   } catch (error) {
@@ -346,8 +363,7 @@ app.get("/api/users/me/referrals", async (req, res) => {
     return res.status(401).json({ error: "Unauthorized" });
   }
   try {
-    const q = query(collection(db, "users"), where("invitedBy", "==", user.id));
-    const querySnapshot = await getDocs(q);
+    const querySnapshot = await db.collection("users").where("invitedBy", "==", user.id).get();
     const referrals = querySnapshot.docs.map(doc => doc.data());
     res.json(referrals);
   } catch (error) {
@@ -359,7 +375,7 @@ app.get("/api/users/me/referrals", async (req, res) => {
 // Admin API: Get All Users
 app.get("/api/admin/users", async (req, res) => {
   try {
-    const querySnapshot = await getDocs(collection(db, "users"));
+    const querySnapshot = await db.collection("users").get();
     const allUsers = querySnapshot.docs.map(doc => doc.data());
     res.json(allUsers);
   } catch (error) {
@@ -372,8 +388,7 @@ app.get("/api/admin/users", async (req, res) => {
 app.get("/api/admin/users/:id/history", async (req, res) => {
   const { id } = req.params;
   try {
-    const q = query(collection(db, "bonusHistory"), where("userId", "==", id));
-    const querySnapshot = await getDocs(q);
+    const querySnapshot = await db.collection("bonusHistory").where("userId", "==", id).get();
     const history = querySnapshot.docs.map(doc => doc.data());
     res.json(history);
   } catch (error) {
@@ -388,15 +403,15 @@ app.patch("/api/admin/users/:id/bonuses", async (req, res) => {
   const { amount, description, type = 'manual' } = req.body;
   
   try {
-    const userRef = doc(db, "users", id);
-    const userDoc = await getDoc(userRef);
+    const userRef = db.collection("users").doc(id);
+    const userDoc = await userRef.get();
     
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
+    if (userDoc.exists) {
+      const userData = userDoc.data()!;
       const adjustment = Number(amount);
       const newBalance = (userData.bonusBalance || 0) + adjustment;
       
-      await updateDoc(userRef, { bonusBalance: newBalance });
+      await userRef.update({ bonusBalance: newBalance });
       
       const transactionId = Date.now().toString();
       const transaction = {
@@ -407,7 +422,7 @@ app.patch("/api/admin/users/:id/bonuses", async (req, res) => {
         description: description || (adjustment > 0 ? 'Начисление баллов администратором' : 'Списание баллов администратором'),
         date: new Date().toLocaleDateString('ru-RU')
       };
-      await setDoc(doc(db, "bonusHistory", transactionId), transaction);
+      await db.collection("bonusHistory").doc(transactionId).set(transaction);
       
       res.json({ user: { ...userData, bonusBalance: newBalance }, transaction });
     } else {
@@ -503,8 +518,9 @@ app.post("/api/auth/vkid", async (req, res) => {
     const vkId = vkUser.user_id.toString();
     const { invitedBy } = req.body;
 
-    let existingUserDoc = await getDoc(doc(db, "users", vkId));
-    let existingUser = existingUserDoc.exists() ? existingUserDoc.data() : null;
+    const userRef = db.collection("users").doc(vkId);
+    let existingUserDoc = await userRef.get();
+    let existingUser = existingUserDoc.exists ? existingUserDoc.data() : null;
     
     if (!existingUser) {
       existingUser = {
@@ -521,20 +537,20 @@ app.post("/api/auth/vkid", async (req, res) => {
         invitedBy: invitedBy || undefined,
         createdAt: new Date().toLocaleDateString('ru-RU')
       };
-      await setDoc(doc(db, "users", vkId), existingUser);
+      await userRef.set(existingUser);
 
       // If user was invited, give bonus to inviter
       if (invitedBy) {
-        const inviterRef = doc(db, "users", invitedBy);
-        const inviterDoc = await getDoc(inviterRef);
-        if (inviterDoc.exists()) {
-          const inviterData = inviterDoc.data();
+        const inviterRef = db.collection("users").doc(invitedBy);
+        const inviterDoc = await inviterRef.get();
+        if (inviterDoc.exists) {
+          const inviterData = inviterDoc.data()!;
           const bonusAmount = 100; // Registration bonus
           const newBalance = (inviterData.bonusBalance || 0) + bonusAmount;
-          await updateDoc(inviterRef, { bonusBalance: newBalance });
+          await inviterRef.update({ bonusBalance: newBalance });
           
           const transactionId = Date.now().toString() + Math.random();
-          await setDoc(doc(db, "bonusHistory", transactionId), {
+          await db.collection("bonusHistory").doc(transactionId).set({
             id: transactionId,
             userId: invitedBy,
             type: 'referral',
@@ -563,9 +579,9 @@ app.patch("/api/auth/profile", async (req, res) => {
   if (req.session?.user) {
     const userId = req.session.user.id;
     try {
-      const userRef = doc(db, "users", userId);
-      await updateDoc(userRef, req.body);
-      const updatedDoc = await getDoc(userRef);
+      const userRef = db.collection("users").doc(userId);
+      await userRef.update(req.body);
+      const updatedDoc = await userRef.get();
       req.session.user = updatedDoc.data();
       res.json({ user: req.session.user });
     } catch (error) {
@@ -601,13 +617,13 @@ app.post("/api/auth/mock", async (req, res) => {
   };
 
   try {
-    const userRef = doc(db, "users", mockUser.id);
-    const userDoc = await getDoc(userRef);
-    if (!userDoc.exists()) {
-      await setDoc(userRef, mockUser);
+    const userRef = db.collection("users").doc(mockUser.id);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) {
+      await userRef.set(mockUser);
     }
     
-    const finalUser = (await getDoc(userRef)).data();
+    const finalUser = (await userRef.get()).data();
     req.session!.user = finalUser;
     res.json({ user: finalUser });
   } catch (error) {
