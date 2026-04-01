@@ -6,6 +6,7 @@ import _cookieSession from "cookie-session";
 const cookieSession = (_cookieSession as any).default || _cookieSession;
 
 import admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
 
 // Import the Firebase configuration
 import firebaseConfig from "../firebase-applet-config.json" with { type: "json" };
@@ -31,7 +32,7 @@ if (!admin.apps.length) {
   }
 }
 
-const db = admin.firestore(firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)' ? firebaseConfig.firestoreDatabaseId : undefined);
+const db = getFirestore(admin.apps[0], firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)' ? firebaseConfig.firestoreDatabaseId : undefined);
 
 const app = express();
 const PORT = 3000;
