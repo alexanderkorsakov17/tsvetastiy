@@ -53,6 +53,9 @@ const ORDER_STATUSES = [
   { id: 'received', label: 'Дома', color: 'bg-gray-400' },
 ];
 
+import { storage } from './firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+
 export const AdminPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'users'>('products');
   const [products, setProducts] = useState<Product[]>([]);
@@ -61,6 +64,7 @@ export const AdminPanel: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
   const [isAddingProduct, setIsAddingProduct] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [orderSearch, setOrderSearch] = useState('');
   const [userSearch, setUserSearch] = useState('');
   const [copySuccess, setCopySuccess] = useState<string | null>(null);
@@ -112,14 +116,21 @@ export const AdminPanel: React.FC = () => {
     setTimeout(() => setCopySuccess(null), 2000);
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setEditingProduct(prev => ({ ...prev, image: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
+      setIsUploading(true);
+      try {
+        const storageRef = ref(storage, `products/${Date.now()}_${file.name}`);
+        await uploadBytes(storageRef, file);
+        const downloadURL = await getDownloadURL(storageRef);
+        setEditingProduct(prev => ({ ...prev, image: downloadURL }));
+      } catch (error) {
+        console.error('Error uploading image:', error);
+        alert('Ошибка при загрузке изображения');
+      } finally {
+        setIsUploading(false);
+      }
     }
   };
 
@@ -927,14 +938,20 @@ export const AdminPanel: React.FC = () => {
                       </div>
                     )}
                     <div className="flex gap-2">
-                      <label className="flex-1 cursor-pointer">
+                      <label className={`flex-1 cursor-pointer ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
                         <div className="bg-blue-50 text-blue-600 rounded-2xl py-4 px-4 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-blue-100 transition-colors">
-                          <ImageIcon size={16} /> Загрузить файл
+                          {isUploading ? (
+                            <div className="w-4 h-4 border-2 border-blue-600/30 border-t-blue-600 rounded-full animate-spin"></div>
+                          ) : (
+                            <ImageIcon size={16} />
+                          )}
+                          {isUploading ? 'Загрузка...' : 'Загрузить файл'}
                         </div>
                         <input 
                           type="file" 
                           accept="image/*"
                           onChange={handleImageUpload}
+                          disabled={isUploading}
                           className="hidden"
                         />
                       </label>
@@ -1026,9 +1043,10 @@ export const AdminPanel: React.FC = () => {
                 </button>
                 <button 
                   type="submit"
-                  className="bg-blue-600 text-white px-10 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-blue-100 hover:scale-105 transition-transform"
+                  disabled={isUploading}
+                  className={`bg-blue-600 text-white px-10 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-blue-100 hover:scale-105 transition-transform ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                  Сохранить
+                  {isUploading ? 'Загрузка фото...' : 'Сохранить'}
                 </button>
               </div>
             </form>

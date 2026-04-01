@@ -78,86 +78,53 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 // Admin Secret Path
 const ADMIN_SECRET = "admin-secret-9922";
 
-// In-memory data store (only products remain for now, but could also be moved)
-let products = [
-  {
-    id: '1',
-    name: 'Лавандовый сон',
-    category: 'Чай для ванн',
-    description: 'Успокаивающий чай для ванны с цельными цветками лаванды.',
-    price: 450,
-    image: 'https://images.unsplash.com/photo-1615485290382-441e4d0c9cb5?q=80&w=400&h=400&auto=format&fit=crop',
-    benefits: ['Улучшает сон', 'Снимает стресс', 'Смягчает кожу'],
-    usage: 'Опустите пакетик в горячую ванну на 5-10 минут. Не разрывайте пакет.',
-    color: '#E1BEE7'
-  },
-  {
-    id: '2',
-    name: 'Бутоны роз',
-    category: 'Травы',
-    description: 'Натуральные сушеные бутоны роз для эстетики и ароматерапии.',
-    price: 380,
-    image: 'https://images.unsplash.com/photo-1596435086888-295326466f8e?q=80&w=400&h=400&auto=format&fit=crop',
-    benefits: ['Увлажнение', 'Антиоксиданты', 'Романтичное настроение'],
-    usage: 'Рассыпьте по поверхности воды или добавьте в чайный пакетик для ванны.',
-    color: '#F8BBD0'
-  },
-  {
-    id: '3',
-    name: 'Мятная свежесть',
-    category: 'Травы',
-    description: 'Перечная мята и мелисса для бодрости духа.',
-    price: 320,
-    image: 'https://images.unsplash.com/photo-1532938911079-1b06ac7ceec7?q=80&w=400&h=400&auto=format&fit=crop',
-    benefits: ['Освежает', 'Снимает головную боль', 'Тонизирует'],
-    usage: 'Идеально для утренней ванны или ванночки для ног.',
-    color: '#C8E6C9'
-  },
-  {
-    id: '4',
-    name: 'Гранулированная свеча "Небо"',
-    category: 'Свечи',
-    description: 'Голубой насыпной воск. Создайте свою уникальную свечу.',
-    price: 550,
-    image: 'https://images.unsplash.com/photo-1570823635306-250abb06d4b3?q=80&w=400&h=400&auto=format&fit=crop',
-    benefits: ['Чистое горение', 'Яркий цвет', 'Без запаха'],
-    usage: 'Насыпьте в стеклянную емкость, вставьте фитиль и зажгите.',
-    color: '#BBDEFB'
-  },
-  {
-    id: '5',
-    name: 'Розовая соль Эпсома',
-    category: 'Соль',
-    description: 'Чистейшая английская соль с добавлением эфирных масел.',
-    price: 490,
-    image: 'https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?q=80&w=400&h=400&auto=format&fit=crop',
-    benefits: ['Детокс', 'Расслабление мышц', 'Уход за кожей'],
-    usage: 'Растворите 200-300г соли в теплой воде перед принятием ванны.',
-    color: '#F48FB1'
-  },
-  {
-    id: '6',
-    name: 'Набор "Полный Дзен"',
-    category: 'Комплексы',
-    description: 'Подарочный комплекс: чай для ванны, свеча и соль.',
-    price: 1290,
-    image: 'https://images.unsplash.com/photo-1544161515-4ab6ce6db874?q=80&w=400&h=400&auto=format&fit=crop',
-    benefits: ['Идеальный подарок', 'Комплексный релакс', 'Экономия 15%'],
-    usage: 'Используйте все компоненты последовательно для создания СПА-атмосферы.',
-    color: '#FFE082'
-  }
-];
-
-let orders: any[] = [];
-let users: any[] = [];
-let bonusHistory: any[] = [];
-
 // Health check
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 
-// Public API: Get Products
-app.get("/api/products", (req, res) => {
-  res.json(products);
+// Public API: Get All Products
+app.get("/api/products", async (req, res) => {
+  try {
+    const querySnapshot = await db.collection("products").get();
+    const allProducts = querySnapshot.docs.map(doc => doc.data());
+    
+    // If no products in DB, seed with initial data
+    if (allProducts.length === 0) {
+      const initialProducts = [
+        {
+          id: '1',
+          name: 'Лавандовый сон',
+          category: 'Чай для ванн',
+          description: 'Успокаивающий чай для ванны с цельными цветками лаванды.',
+          price: 450,
+          image: 'https://images.unsplash.com/photo-1615485290382-441e4d0c9cb5?q=80&w=400&h=400&auto=format&fit=crop',
+          benefits: ['Улучшает сон', 'Снимает стресс', 'Смягчает кожу'],
+          usage: 'Опустите пакетик в горячую ванну на 5-10 минут. Не разрывайте пакет.',
+          color: '#E1BEE7'
+        },
+        {
+          id: '2',
+          name: 'Бутоны роз',
+          category: 'Травы',
+          description: 'Натуральные сушеные бутоны роз для эстетики и ароматерапии.',
+          price: 380,
+          image: 'https://images.unsplash.com/photo-1596435086888-295326466f8e?q=80&w=400&h=400&auto=format&fit=crop',
+          benefits: ['Красивая ванна', 'Нежный аромат', 'Увлажнение'],
+          usage: 'Добавьте горсть бутонов в ванну во время наполнения.',
+          color: '#F8BBD0'
+        }
+      ];
+      
+      for (const p of initialProducts) {
+        await db.collection("products").doc(p.id).set(p);
+      }
+      return res.json(initialProducts);
+    }
+    
+    res.json(allProducts);
+  } catch (error) {
+    console.error("Error fetching products:", error);
+    res.status(500).json({ error: "Failed to fetch products" });
+  }
 });
 
 // Public API: Create Order
@@ -319,27 +286,33 @@ app.patch("/api/admin/orders/:id", async (req, res) => {
 });
 
 // Admin API: Update Product
-app.post("/api/admin/products", (req, res) => {
+app.post("/api/admin/products", async (req, res) => {
   const product = req.body;
-  if (product.id) {
-    const index = products.findIndex(p => p.id === product.id);
-    if (index !== -1) {
-      products[index] = { ...products[index], ...product };
+  try {
+    if (product.id) {
+      await db.collection("products").doc(product.id).set(product, { merge: true });
     } else {
-      products.push(product);
+      const newDoc = db.collection("products").doc();
+      product.id = newDoc.id;
+      await newDoc.set(product);
     }
-  } else {
-    product.id = Date.now().toString();
-    products.push(product);
+    res.json(product);
+  } catch (error) {
+    console.error("Error saving product:", error);
+    res.status(500).json({ error: "Failed to save product" });
   }
-  res.json(product);
 });
 
 // Admin API: Delete Product
-app.delete("/api/admin/products/:id", (req, res) => {
+app.delete("/api/admin/products/:id", async (req, res) => {
   const { id } = req.params;
-  products = products.filter(p => p.id !== id);
-  res.json({ success: true });
+  try {
+    await db.collection("products").doc(id).delete();
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting product:", error);
+    res.status(500).json({ error: "Failed to delete product" });
+  }
 });
 
 // User API: Get My Bonus History
