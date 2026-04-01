@@ -544,6 +544,7 @@ app.post("/api/auth/vkid", async (req, res) => {
       new URLSearchParams({
         access_token: final_access_token,
         client_id: process.env.VK_CLIENT_ID || "54511533",
+        lang: 'ru'
       }).toString(),
       { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
     ).catch(err => {

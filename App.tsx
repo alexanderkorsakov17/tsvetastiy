@@ -862,7 +862,10 @@ const AppContent: React.FC = () => {
   const [bonusToSpend, setBonusToSpend] = useState(0);
   const [useBonuses, setUseBonuses] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'shop' | 'zen' | 'profile'>('shop');
+  const [activeTab, setActiveTab] = useState<'shop' | 'zen' | 'profile'>(() => {
+    const saved = localStorage.getItem('activeTab');
+    return (saved === 'shop' || saved === 'zen' || saved === 'profile') ? saved : 'shop';
+  });
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedTip, setSelectedTip] = useState<RelaxTip | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('Все');
@@ -870,9 +873,25 @@ const AppContent: React.FC = () => {
   const [chatHistory, setChatHistory] = useState<Message[]>([]);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    const saved = localStorage.getItem('cart');
+    try {
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
   const [isCartOpen, setIsCartOpen] = useState(false);
   
+  // Persistence effects
+  useEffect(() => {
+    localStorage.setItem('cart', JSON.stringify(cart));
+  }, [cart]);
+
+  useEffect(() => {
+    localStorage.setItem('activeTab', activeTab);
+  }, [activeTab]);
+
   // All sections collapsed by default
   const [isAffiliateExpanded, setIsAffiliateExpanded] = useState(false);
   const [isOrdersExpanded, setIsOrdersExpanded] = useState(false);
@@ -1050,7 +1069,11 @@ const AppContent: React.FC = () => {
   };
 
   const updateQuantity = (productId: string, delta: number) => {
-    setCart(prev => prev.map(item => item.id === productId ? { ...item, quantity: Math.max(1, item.quantity + delta) } : item));
+    setCart(prev => prev.map(item => item.id === productId ? { ...item, quantity: item.quantity + delta } : item).filter(item => item.quantity > 0));
+  };
+
+  const removeFromCart = (productId: string) => {
+    setCart(prev => prev.filter(item => item.id !== productId));
   };
 
   const cartTotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
@@ -1620,7 +1643,13 @@ const AppContent: React.FC = () => {
                      </div>
                    )}
                    {cart.map(item => (
-                     <div key={item.id} className="flex gap-4 items-center bg-white p-4 rounded-[28px] border border-gray-50 shadow-sm">
+                     <div key={item.id} className="flex gap-4 items-center bg-white p-4 rounded-[28px] border border-gray-50 shadow-sm relative group">
+                        <button 
+                          onClick={() => removeFromCart(item.id)}
+                          className="absolute -top-2 -right-2 w-8 h-8 bg-white border border-gray-100 rounded-full flex items-center justify-center text-red-400 shadow-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-red-50 z-10"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                         <img src={item.image} className="w-16 h-16 rounded-2xl object-cover" alt="" />
                         <div className="flex-1">
                            <h4 className="text-xs font-black text-gray-900">{item.name}</h4>
