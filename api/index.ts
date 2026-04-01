@@ -78,6 +78,55 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 // Admin Secret Path
 const ADMIN_SECRET = "admin-secret-9922";
 
+import multer from "multer";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+
+// S3 Configuration (Yandex Cloud / VK Cloud)
+const s3Client = new S3Client({
+  region: process.env.S3_REGION || "ru-central1",
+  endpoint: process.env.S3_ENDPOINT || "https://storage.yandexcloud.net",
+  credentials: {
+    accessKeyId: process.env.S3_ACCESS_KEY_ID || "",
+    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || "",
+  },
+});
+
+const upload = multer({ storage: multer.memoryStorage() });
+
+// Admin API: Upload Image to S3
+app.post("/api/admin/upload", upload.single("image"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    const file = req.file;
+    const fileName = `products/${Date.now()}_${file.originalname}`;
+    const bucketName = process.env.S3_BUCKET_NAME || "";
+
+    if (!bucketName) {
+      return res.status(500).json({ error: "S3_BUCKET_NAME is not configured" });
+    }
+
+    const command = new PutObjectCommand({
+      Bucket: bucketName,
+      Key: fileName,
+      Body: file.buffer,
+      ContentType: file.mimetype,
+    });
+
+    await s3Client.send(command);
+
+    // Construct the public URL
+    // Yandex Cloud endpoint usually looks like: https://storage.yandexcloud.net/bucket-name/file-name
+    const publicUrl = `${process.env.S3_ENDPOINT}/${bucketName}/${fileName}`;
+    res.json({ url: publicUrl });
+  } catch (error: any) {
+    console.error("Error uploading to S3:", error);
+    res.status(500).json({ error: "Failed to upload image", details: error.message });
+  }
+});
+
 // Health check
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 

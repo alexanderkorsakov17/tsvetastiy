@@ -121,13 +121,25 @@ export const AdminPanel: React.FC = () => {
     if (file) {
       setIsUploading(true);
       try {
-        const storageRef = ref(storage, `products/${Date.now()}_${file.name}`);
-        await uploadBytes(storageRef, file);
-        const downloadURL = await getDownloadURL(storageRef);
-        setEditingProduct(prev => ({ ...prev, image: downloadURL }));
-      } catch (error) {
-        console.error('Error uploading image:', error);
-        alert('Ошибка при загрузке изображения');
+        const formData = new FormData();
+        formData.append('image', file);
+
+        const response = await fetch('/api/admin/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || errorData.error || 'Upload failed');
+        }
+
+        const data = await response.json();
+        setEditingProduct(prev => ({ ...prev, image: data.url }));
+        console.log("Image uploaded successfully to S3:", data.url);
+      } catch (error: any) {
+        console.error("Error uploading image:", error);
+        alert("Ошибка при загрузке изображения на сервер.\n\nДетали: " + error.message);
       } finally {
         setIsUploading(false);
       }
