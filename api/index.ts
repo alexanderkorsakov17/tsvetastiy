@@ -712,8 +712,8 @@ const startServer = async () => {
     } catch (e) {
       console.error("Vite dev server failed to start:", e);
     }
-  } else if (!process.env.VERCEL) {
-    // Only serve static files if NOT on Vercel (Vercel handles static files automatically)
+  } else {
+    // Serve static files in production
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("/*path", (req, res) => {
@@ -721,11 +721,9 @@ const startServer = async () => {
     });
   }
 
-  if (!process.env.VERCEL) {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-  }
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
 };
 
 startServer().catch(err => {

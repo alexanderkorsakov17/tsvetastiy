@@ -2,17 +2,12 @@ meta:
   environment: node
   toolchain:
     name: npm
-    version: "20"
+    version: 22
 build:
-  skip: false
-  additionalCommands: null
-  artifacts:
-    "*": /
+  install: npm install
+  build: npm run build
 run:
-  scriptName: null
-  scriptArguments: null
-  nodeArguments: null
   command: npm run start
-  persistenceMount: /data
-  containerPort: "3000"
-  servicePort: "80"
+  persistence:
+    - mountPath: /data
+      name: data
