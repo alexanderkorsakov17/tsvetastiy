@@ -1,5 +1,6 @@
 import express from "express";
 import * as path from "path";
+import * as fs from "fs";
 import axios from "axios";
 import _cookieSession from "cookie-session";
 
@@ -13,9 +14,30 @@ import firebaseConfig from "../firebase-applet-config.json" with { type: "json" 
 
 // Initialize Firebase Admin SDK
 if (!admin.apps.length) {
-  const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT 
-    ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT) 
-    : null;
+  let serviceAccount = null;
+
+  try {
+    const envKey = process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (envKey) {
+      if (envKey.trim().startsWith("{")) {
+        // It's plain JSON
+        serviceAccount = JSON.parse(envKey);
+      } else {
+        // It's Base64 encoded
+        const decodedKey = Buffer.from(envKey, "base64").toString("utf-8");
+        serviceAccount = JSON.parse(decodedKey);
+        console.log("Firebase Service Account decoded from Base64");
+      }
+    } else {
+      // Try to read from file if it exists (for local dev)
+      const keyPath = path.join(process.cwd(), "firebase-key.json");
+      if (fs.existsSync(keyPath)) {
+        serviceAccount = JSON.parse(fs.readFileSync(keyPath, "utf8"));
+      }
+    }
+  } catch (e) {
+    console.error("Error parsing Firebase Service Account:", e);
+  }
 
   if (serviceAccount) {
     admin.initializeApp({
@@ -24,7 +46,7 @@ if (!admin.apps.length) {
     });
     console.log("Firebase Admin initialized with Service Account");
   } else {
-    // Fallback for local dev or if key is missing (will still fail if rules are strict)
+    // Fallback for local dev or if key is missing
     admin.initializeApp({
       projectId: firebaseConfig.projectId
     });
@@ -36,7 +58,7 @@ const db = getFirestore(admin.apps[0], firebaseConfig.firestoreDatabaseId && fir
 db.settings({ ignoreUndefinedProperties: true });
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // Health check before any middleware
 app.get("/api/health-check", (req, res) => res.send("OK"));
@@ -513,7 +535,7 @@ app.post("/api/auth/vkid", async (req, res) => {
           code: code,
           device_id: device_id,
           client_id: process.env.VK_CLIENT_ID || "54511533",
-          client_secret: process.env.VK_CLIENT_SECRET || "xKjOWQqGuSI9B9mU3M8p",
+          client_secret: process.env.VK_CLIENT_SECRET,
           redirect_uri: redirect_uri
         }).toString(),
         { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
