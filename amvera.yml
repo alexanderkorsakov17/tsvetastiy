@@ -7,7 +7,9 @@ build:
   skip: false
   additionalCommands: "npm install && npm run build"
   artifacts:
-    "*": /
+    dist: dist
+    node_modules: node_modules
+    package.json: package.json
 run:
   scriptName: null
   scriptArguments: null
