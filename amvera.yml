@@ -5,7 +5,7 @@ meta:
     version: "22"
 build:
   skip: false
-  additionalCommands: null
+  additionalCommands: "npm install && npm run build"
   artifacts:
     "*": /
 run:
