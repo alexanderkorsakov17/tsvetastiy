@@ -701,7 +701,9 @@ app.post("/api/auth/mock", async (req, res) => {
 
 // Server initialization
 const startServer = async () => {
-  if (process.env.NODE_ENV !== "production") {
+  const isProd = process.env.NODE_ENV === "production" || process.env.AMVERA === "true" || !process.env.NODE_ENV;
+
+  if (!isProd) {
     try {
       const { createServer: createViteServer } = await import("vite");
       const vite = await createViteServer({
