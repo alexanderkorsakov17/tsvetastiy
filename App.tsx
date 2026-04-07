@@ -567,7 +567,7 @@ const PVZPickerContent: React.FC<{
       </div>
 
       {showMapModal && createPortal(
-        <div className="fixed inset-0 z-[9999] flex flex-col bg-black animate-fadeIn">
+        <div className="fixed inset-0 z-[9999] flex flex-col bg-black animate-fadeIn max-w-md mx-auto shadow-2xl">
           <div className="flex-1 relative">
             {loading && (
               <div className={`absolute inset-0 z-20 flex items-center justify-center ${isDarkMode ? 'bg-black/30' : 'bg-white/30'} backdrop-blur-sm`}>
@@ -1420,7 +1420,7 @@ const AppContent: React.FC = () => {
               {filteredProducts.map(product => (
                 <div key={product.id} onClick={() => { setSelectedProduct(product); setSelectedWeightIndex(0); }} className="bg-white rounded-[32px] p-3 shadow-sm border border-gray-100 flex flex-col gap-3 active:scale-95 transition-transform group">
                   <div className="aspect-square rounded-[24px] overflow-hidden bg-gray-50 relative">
-                    <img src={product.image} alt={product.name} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                    <img src={product.image || undefined} alt={product.name} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
                   </div>
                   <div>
                     <h3 className="text-[13px] font-bold text-gray-800 leading-tight line-clamp-1">{product.name}</h3>
@@ -1439,7 +1439,7 @@ const AppContent: React.FC = () => {
           <div className="space-y-4 pb-20 px-4 py-6">
             {/* Header User */}
             <div className="flex items-center gap-4 mb-2">
-              <div className="w-16 h-16 bg-gradient-to-tr from-pink-300 to-amber-200 rounded-[24px] p-0.5 shadow-md"><img src={currentUser?.photo} className="w-full h-full object-cover rounded-[22px]" alt="Avatar" /></div>
+              <div className="w-16 h-16 bg-gradient-to-tr from-pink-300 to-amber-200 rounded-[24px] p-0.5 shadow-md"><img src={currentUser?.photo || undefined} className="w-full h-full object-cover rounded-[22px]" alt="Avatar" /></div>
               <div className="flex-1">
                  <h2 className="text-lg font-black text-gray-900 tracking-tight leading-none">{currentUser?.fullName || currentUser?.name}</h2>
                  <p className="text-gray-400 text-[9px] font-bold uppercase tracking-widest mt-1 opacity-70">ID: {currentUser?.id}</p>
@@ -1623,22 +1623,21 @@ const AppContent: React.FC = () => {
 
       {/* Shared Modals */}
       {selectedProduct && (
-        <div className="fixed inset-0 z-50 bg-white overflow-y-auto animate-fadeIn flex flex-col font-['Montserrat']">
+        <div className="fixed inset-0 z-50 bg-white overflow-y-auto animate-fadeIn flex flex-col font-['Montserrat'] max-w-md mx-auto shadow-2xl">
            {/* Header Image Area */}
            <div className="relative h-[60vh] shrink-0">
-             <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" />
+             <img src={selectedProduct.image || undefined} alt={selectedProduct.name} className="w-full h-full object-cover" />
              <div className="absolute inset-0 bg-gradient-to-b from-black/10 to-transparent" />
            </div>
 
            {/* Content Area */}
            <div 
-             className="flex-1 bg-white rounded-t-[48px] relative p-8 shadow-[0_-20px_40px_rgba(0,0,0,0.1)] space-y-6"
-             style={{ marginTop: '-30px', paddingBottom: '102px', height: '297.25px' }}
+             className="flex-1 bg-white rounded-t-[48px] relative p-8 shadow-[0_-20px_40px_rgba(0,0,0,0.1)] space-y-4"
+             style={{ marginTop: '-48px', paddingBottom: '120px' }}
            >
              <div className="flex justify-between items-start">
                <h3 
-                 className="font-black text-gray-900 uppercase tracking-tight leading-tight max-w-[80%]"
-                 style={{ marginTop: '2px', height: '25px', width: '260.844px', fontSize: '22px', lineHeight: '25px', marginBottom: '0px', marginRight: '0px' }}
+                 className="font-black text-gray-900 uppercase tracking-tight leading-tight max-w-[80%] text-2xl"
                >{selectedProduct.name}</h3>
                <button 
                  onClick={() => { setSelectedProduct(null); setSelectedWeightIndex(0); }} style={{ marginRight: '-5px', marginTop: '-5px' }} 
@@ -1648,23 +1647,37 @@ const AppContent: React.FC = () => {
                </button>
              </div>
 
-             <p 
-               className="text-sm text-gray-400 leading-relaxed font-medium"
-               style={{ marginTop: '2px', marginLeft: '0px' }}
-             >{selectedProduct.description}</p>
+             <p className="text-sm text-gray-400 leading-relaxed font-medium" style={{ marginTop: '13px' }}>
+               {selectedProduct.description}
+             </p>
+
+             {/* Benefits Section */}
+             {selectedProduct.benefits && selectedProduct.benefits.length > 0 && (
+               <div className="flex flex-wrap gap-2 py-1" style={{ marginTop: '3px' }}>
+                 {selectedProduct.benefits.map((benefit, idx) => (
+                   <div key={idx} className="flex items-center gap-1.5 bg-pink-50/50 px-3 py-1.5 rounded-full border border-pink-100/50">
+                     <Sparkles size={12} className="text-pink-400 shrink-0" />
+                     <span className="text-[10px] font-bold text-gray-600 uppercase tracking-tight">{benefit}</span>
+                   </div>
+                 ))}
+               </div>
+             )}
 
              {/* Weight Toggler */}
              {selectedProduct.weights && selectedProduct.weights.length > 0 && (
-               <div 
-                 className="flex justify-center"
-                 style={{ marginTop: '13px', marginBottom: '-3px', marginRight: '0px' }}
-               >
+               <div className="flex justify-center py-2">
                  {selectedProduct.weights.length === 1 ? (
-                   <div className="inline-flex px-6 py-2 bg-gray-50 rounded-2xl border border-gray-100 text-[10px] font-black uppercase tracking-widest text-gray-900">
+                   <div 
+                     className="inline-flex px-6 py-2 bg-gray-50 rounded-2xl border border-gray-100 text-[10px] font-black uppercase tracking-widest text-gray-900"
+                     style={{ marginTop: '-21px', marginRight: '0px', marginBottom: '0px' }}
+                   >
                      {selectedProduct.weights[0].label} г.
                    </div>
                  ) : (
-                   <div className="bg-[#d1d5db] p-1 rounded-full flex gap-1 w-full max-w-[180px] border border-gray-200 shadow-inner">
+                   <div 
+                     className="bg-[#d1d5db] p-1 rounded-full flex gap-1 w-full max-w-[180px] border border-gray-200 shadow-inner"
+                     style={{ marginTop: '-21px', marginRight: '0px', marginBottom: '0px' }}
+                   >
                      {selectedProduct.weights.map((w, idx) => (
                        <button
                          key={idx}
@@ -1685,11 +1698,11 @@ const AppContent: React.FC = () => {
 
              {/* Composition Link */}
              {selectedProduct.composition && (
-               <div className="flex justify-center pt-2">
+               <div className="flex justify-center">
                  <button 
                    onClick={() => setIsCompositionOpen(true)}
-                   className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 border-b border-gray-100 hover:text-gray-900 transition-colors"
-                   style={{ marginTop: '-20px', marginBottom: '-8px', paddingBottom: '4px', height: '20px' }}
+                   className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 border-b border-gray-100 hover:text-gray-900 transition-colors py-1"
+                   style={{ marginTop: '-21px' }}
                  >
                    Состав
                  </button>
@@ -1698,7 +1711,7 @@ const AppContent: React.FC = () => {
            </div>
 
            {/* Sticky Bottom Bar */}
-           <div className="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-white via-white to-transparent pointer-events-none">
+           <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md p-6 bg-gradient-to-t from-white via-white to-transparent pointer-events-none z-10">
              <div 
               className="max-w-md mx-auto flex items-center justify-between pointer-events-auto"
               style={{ marginTop: '0px', marginBottom: '-3px', marginRight: '5px', marginLeft: '10px' }}
@@ -1728,7 +1741,7 @@ const AppContent: React.FC = () => {
       {/* Composition Bottom Sheet */}
       {isCompositionOpen && selectedProduct && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="absolute inset-0" onClick={() => setIsCompositionOpen(false)} />
+          <div className="absolute inset-0 max-w-md mx-auto" onClick={() => setIsCompositionOpen(false)} />
           <div className="bg-[#1a1a1a] w-full max-w-md rounded-t-[32px] p-8 animate-slideUp relative shadow-2xl overflow-y-auto max-h-[85vh]">
             <div className="w-12 h-1 bg-gray-700 rounded-full mx-auto mb-8" />
             
@@ -1737,20 +1750,6 @@ const AppContent: React.FC = () => {
                 <h4 className="text-xl font-bold mb-3">Состав</h4>
                 <p className="text-sm text-gray-400 leading-relaxed">{selectedProduct.composition}</p>
               </section>
-
-              {selectedProduct.benefits && selectedProduct.benefits.length > 0 && (
-                <section>
-                  <h4 className="text-xl font-bold mb-3">Преимущества</h4>
-                  <div className="space-y-2">
-                    {selectedProduct.benefits.map((benefit, idx) => (
-                      <div key={idx} className="flex items-center gap-3 text-sm text-gray-400">
-                        <Sparkles size={16} className="text-pink-400 shrink-0" />
-                        <span>{benefit}</span>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              )}
 
               {selectedProduct.contraindications && (
                 <section>
@@ -1810,7 +1809,7 @@ const AppContent: React.FC = () => {
                         >
                           <Trash2 size={14} />
                         </button>
-                        <img src={item.image} className="w-16 h-16 rounded-2xl object-cover" alt="" />
+                        <img src={item.image || undefined} className="w-16 h-16 rounded-2xl object-cover" alt="" />
                         <div className="flex-1">
                            <h4 className="text-xs font-black text-gray-900">{item.name}</h4>
                            {item.selectedWeight && (
@@ -1977,7 +1976,7 @@ const AppContent: React.FC = () => {
                              <div className="space-y-3 max-h-48 overflow-y-auto pr-2 scrollbar-hide">
                                 {cart.map((item, idx) => (
                                   <div key={`${item.id}-${item.selectedWeight?.label || idx}`} className="flex items-center gap-3 group">
-                                     <img src={item.image} alt={item.name} className="w-10 h-10 rounded-lg object-cover shadow-sm" />
+                                     <img src={item.image || undefined} alt={item.name} className="w-10 h-10 rounded-lg object-cover shadow-sm" />
                                      <div className="flex-1 flex flex-col">
                                         <span className={`text-xs font-bold ${isDarkMode ? 'text-white/90' : 'text-gray-800'}`}>{item.name}</span>
                                         {item.selectedWeight && (
@@ -2271,7 +2270,7 @@ const AppContent: React.FC = () => {
       {/* Referrals Modal */}
       {isReferralsModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-0 sm:p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fadeIn" onClick={() => setIsReferralsModalOpen(false)} />
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fadeIn max-w-md mx-auto" onClick={() => setIsReferralsModalOpen(false)} />
           <div className="relative w-full max-w-md bg-white rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden animate-slideUp flex flex-col max-h-[80vh]">
             <div className="p-6 border-b border-gray-50 flex items-center justify-between">
               <div>
@@ -2285,7 +2284,7 @@ const AppContent: React.FC = () => {
                 <div key={ref.id} className="flex items-center justify-between p-4 bg-gray-50/50 rounded-2xl border border-gray-100">
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-sm">
-                      <img src={ref.photo} alt={ref.name} className="w-full h-full object-cover" />
+                      <img src={ref.photo || undefined} alt={ref.name} className="w-full h-full object-cover" />
                     </div>
                     <div>
                       <p className="text-[11px] font-black text-gray-900 uppercase">{ref.name}</p>

@@ -408,7 +408,7 @@ export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
                     <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <img src={user.photo} alt="" className="w-10 h-10 rounded-xl object-cover" />
+                          <img src={user.photo || undefined} alt="" className="w-10 h-10 rounded-xl object-cover" />
                           <div>
                             <div className="text-xs font-black text-gray-900 uppercase tracking-tight">{user.fullName}</div>
                             <div className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">ID: {user.id}</div>
@@ -469,7 +469,7 @@ export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
             <div className="bg-white rounded-[40px] w-full max-w-4xl max-h-[90vh] overflow-hidden relative z-10 shadow-2xl flex flex-col">
               <div className="p-8 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                 <div className="flex items-center gap-4">
-                  <img src={selectedUser.photo} alt="" className="w-14 h-14 rounded-2xl object-cover shadow-lg" />
+                  <img src={selectedUser.photo || undefined} alt="" className="w-14 h-14 rounded-2xl object-cover shadow-lg" />
                   <div>
                     <h3 className="text-xl font-black text-gray-900 uppercase tracking-tight">{selectedUser.fullName}</h3>
                     <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Партнерская статистика</p>
@@ -502,7 +502,7 @@ export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
                                 <div className="mt-4 pt-4 border-t border-gray-200/50 space-y-2">
                                   {invited.slice(0, 5).map(u => (
                                     <div key={u.id} className="flex items-center gap-2">
-                                      <img src={u.photo} alt="" className="w-4 h-4 rounded-full object-cover" />
+                                      <img src={u.photo || undefined} alt="" className="w-4 h-4 rounded-full object-cover" />
                                       <span className="text-[8px] font-bold text-gray-600 truncate">{u.fullName}</span>
                                     </div>
                                   ))}
@@ -654,7 +654,7 @@ export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
           {products.map(product => (
             <div key={product.id} className="bg-white rounded-[32px] overflow-hidden border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
               <div className="relative h-48">
-                <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                <img src={product.image || undefined} alt={product.name} className="w-full h-full object-cover" />
                 <div className="absolute top-4 right-4 flex gap-2">
                   <button 
                     onClick={() => setEditingProduct(product)}
@@ -946,7 +946,7 @@ export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
                   <div className="flex flex-col gap-3">
                     {editingProduct?.image && (
                       <div className="relative w-full h-32 rounded-2xl overflow-hidden bg-gray-50 border border-gray-100">
-                        <img src={editingProduct.image} className="w-full h-full object-cover" alt="Preview" />
+                        <img src={editingProduct.image || undefined} className="w-full h-full object-cover" alt="Preview" />
                         <button 
                           type="button"
                           onClick={() => setEditingProduct(prev => ({ ...prev, image: '' }))}
