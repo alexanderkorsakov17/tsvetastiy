@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as VKID from '@vkid/sdk';
 import { createPortal } from 'react-dom';
-import { ShoppingBag, Sparkles, User, Heart, ChevronRight, X, Sparkle, Share2, Copy, Users, Gift, TrendingUp, Wallet, Info, Trash2, Plus, Minus, Award, Target, Zap, ChevronDown, ChevronUp, History, ArrowUpRight, ArrowDownLeft, Send, MessageSquare, ExternalLink, Clock, LogOut, ShieldCheck, Edit3, MapPin, Calendar, Check, Search, Truck, Package, Store, Home, AlertCircle, ThumbsUp, Coins, Repeat, HeartHandshake, Layers, Moon, Sun, Maximize2, Minimize2, ChevronLeft, Navigation, CreditCard, ArrowRight, RefreshCw } from 'lucide-react';
+import { ShoppingBag, Sparkles, User, Heart, ChevronRight, X, Sparkle, Share2, Copy, Users, Gift, TrendingUp, Wallet, Info, Trash2, Plus, Minus, Award, Target, Zap, ChevronDown, ChevronUp, History, ArrowUpRight, ArrowDownLeft, Send, MessageSquare, ExternalLink, Clock, LogOut, ShieldCheck, Edit3, MapPin, Calendar, Check, Search, Truck, Package, Store, Home, AlertCircle, ThumbsUp, Coins, Repeat, HeartHandshake, Layers, Moon, Sun, Maximize2, Minimize2, ChevronLeft, Navigation, CreditCard, ArrowRight, RefreshCw, FileText } from 'lucide-react';
 import { YMaps, Map, Placemark, ZoomControl, useYMaps } from '@pbe/react-yandex-maps';
 
 import { PRODUCTS as INITIAL_PRODUCTS, RELAX_TIPS, RUSSIA_CITIES } from './constants';
@@ -184,6 +184,7 @@ const SunLogo = ({ className = "w-10 h-10" }: { className?: string }) => (
 
 interface CartItem extends Product {
   quantity: number;
+  selectedWeight?: { label: string; price: number };
 }
 
 type OrderStatus = 'created' | 'shipped' | 'delivered' | 'received';
@@ -869,6 +870,8 @@ const AppContent: React.FC = () => {
     return (saved === 'shop' || saved === 'zen' || saved === 'profile') ? saved : 'shop';
   });
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedWeightIndex, setSelectedWeightIndex] = useState<number>(0);
+  const [isCompositionOpen, setIsCompositionOpen] = useState(false);
   const [selectedTip, setSelectedTip] = useState<RelaxTip | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('Все');
   const [aiInput, setAiInput] = useState('');
@@ -893,6 +896,16 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('activeTab', activeTab);
   }, [activeTab]);
+
+  // Admin query param check
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('admin') === '1' && currentUser?.email === 'alexkors1703@gmail.com') {
+      setIsAdmin(true);
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [currentUser]);
 
   // All sections collapsed by default
   const [isAffiliateExpanded, setIsAffiliateExpanded] = useState(false);
@@ -1063,24 +1076,47 @@ const AppContent: React.FC = () => {
     }
   };
   
-  const addToCart = (product: Product) => {
+  const addToCart = (product: Product, weightIndex?: number) => {
+    const selectedWeight = weightIndex !== undefined && product.weights && product.weights[weightIndex] 
+      ? product.weights[weightIndex] 
+      : undefined;
+    
     setCart(prev => {
-      const existing = prev.find(item => item.id === product.id);
-      return existing ? prev.map(item => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item) : [...prev, { ...product, quantity: 1 }];
+      const existing = prev.find(item => 
+        item.id === product.id && 
+        (selectedWeight ? item.selectedWeight?.label === selectedWeight.label : !item.selectedWeight)
+      );
+      
+      if (existing) {
+        return prev.map(item => 
+          (item.id === product.id && (selectedWeight ? item.selectedWeight?.label === selectedWeight.label : !item.selectedWeight))
+            ? { ...item, quantity: item.quantity + 1 } 
+            : item
+        );
+      }
+      
+      return [...prev, { ...product, quantity: 1, selectedWeight }];
     });
   };
 
-  const updateQuantity = (productId: string, delta: number) => {
-    setCart(prev => prev.map(item => item.id === productId ? { ...item, quantity: item.quantity + delta } : item).filter(item => item.quantity > 0));
+  const updateQuantity = (productId: string, delta: number, weightLabel?: string) => {
+    setCart(prev => prev.map(item => 
+      (item.id === productId && item.selectedWeight?.label === weightLabel) 
+        ? { ...item, quantity: item.quantity + delta } 
+        : item
+    ).filter(item => item.quantity > 0));
   };
 
-  const removeFromCart = (productId: string) => {
-    setCart(prev => prev.filter(item => item.id !== productId));
+  const removeFromCart = (productId: string, weightLabel?: string) => {
+    setCart(prev => prev.filter(item => !(item.id === productId && item.selectedWeight?.label === weightLabel)));
   };
 
-  const cartTotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+  const cartTotal = cart.reduce((acc, item) => acc + ((item.selectedWeight?.price || item.price) * item.quantity), 0);
   const cartCount = cart.reduce((acc, item) => acc + item.quantity, 0);
-  const deliveryFee = cartTotal >= MIN_ORDER_FREE_DELIVERY ? 0 : PAID_DELIVERY_FEE;
+  
+  const isZheleznogorsk = (citySearch.toLowerCase().includes('железногорск') || deliveryAddress.toLowerCase().includes('железногорск')) && 
+                          (citySearch.toLowerCase().includes('курск') || deliveryAddress.toLowerCase().includes('курск'));
+  const deliveryFee = (cartTotal >= MIN_ORDER_FREE_DELIVERY || isZheleznogorsk) ? 0 : PAID_DELIVERY_FEE;
   
   const maxBonusAllowed = Math.floor(cartTotal * 0.99);
   const bonusToApply = useBonuses ? Math.min(bonusToSpend, maxBonusAllowed, currentUser?.bonusBalance || 0) : 0;
@@ -1160,7 +1196,7 @@ const AppContent: React.FC = () => {
     const newOrderData = {
       total: finalTotal,
       bonusUsed: bonusToApply,
-      items: cart.map(i => i.name),
+      items: cart.map(i => i.selectedWeight ? `${i.name} (${i.selectedWeight.label})` : i.name),
       deliveryAddress: `${citySearch}, ${deliveryAddress}`,
       deliveryProvider: selectedProvider,
       comment: orderComment,
@@ -1240,7 +1276,7 @@ const AppContent: React.FC = () => {
   );
 
   if (isAdmin) {
-    return <AdminPanel />;
+    return <AdminPanel onBack={() => setIsAdmin(false)} />;
   }
 
   if (isAuthChecking) {
@@ -1341,32 +1377,6 @@ const AppContent: React.FC = () => {
       </header>
 
       <main className="flex-1 overflow-y-auto">
-        {activeTab === 'shop' && (
-          <div className="animate-fadeIn px-4 py-4">
-            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-              {categories.map(cat => (
-                <button key={cat} onClick={() => setSelectedCategory(cat)} className={`shrink-0 px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${selectedCategory === cat ? 'bg-pink-500 text-white shadow-lg shadow-pink-100' : 'bg-gray-50 text-gray-400'}`}>{cat}</button>
-              ))}
-            </div>
-            <div className="grid grid-cols-2 gap-4 mt-3">
-              {filteredProducts.map(product => (
-                <div key={product.id} onClick={() => setSelectedProduct(product)} className="bg-white rounded-[32px] p-3 shadow-sm border border-gray-100 flex flex-col gap-3 active:scale-95 transition-transform group">
-                  <div className="aspect-square rounded-[24px] overflow-hidden bg-gray-50 relative">
-                    <img src={product.image} alt={product.name} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
-                  </div>
-                  <div>
-                    <h3 className="text-[13px] font-bold text-gray-800 leading-tight line-clamp-1">{product.name}</h3>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="text-[15px] font-black text-pink-500">{product.price} ₽</span>
-                      <div onClick={(e) => { e.stopPropagation(); addToCart(product); }} className="w-8 h-8 bg-pink-500 rounded-full flex items-center justify-center text-white shadow-md"><Plus size={16} /></div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {activeTab === 'zen' && (
           <div className="flex flex-col h-[75vh] animate-fadeIn">
             <div className="px-4 py-6">
@@ -1399,6 +1409,32 @@ const AppContent: React.FC = () => {
           </div>
         )}
 
+        {activeTab === 'shop' && (
+          <div className="animate-fadeIn px-4 py-4">
+            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+              {categories.map(cat => (
+                <button key={cat} onClick={() => setSelectedCategory(cat)} className={`shrink-0 px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${selectedCategory === cat ? 'bg-pink-500 text-white shadow-lg shadow-pink-100' : 'bg-gray-50 text-gray-400'}`}>{cat}</button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-4 mt-3">
+              {filteredProducts.map(product => (
+                <div key={product.id} onClick={() => { setSelectedProduct(product); setSelectedWeightIndex(0); }} className="bg-white rounded-[32px] p-3 shadow-sm border border-gray-100 flex flex-col gap-3 active:scale-95 transition-transform group">
+                  <div className="aspect-square rounded-[24px] overflow-hidden bg-gray-50 relative">
+                    <img src={product.image} alt={product.name} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                  </div>
+                  <div>
+                    <h3 className="text-[13px] font-bold text-gray-800 leading-tight line-clamp-1">{product.name}</h3>
+                    <div className="flex items-center justify-between mt-2">
+                      <span className="text-[15px] font-black text-pink-500">{product.price} ₽</span>
+                      <div onClick={(e) => { e.stopPropagation(); addToCart(product); }} className="w-8 h-8 bg-pink-500 rounded-full flex items-center justify-center text-white shadow-md active:scale-90 transition-all"><Plus size={16} /></div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {activeTab === 'profile' && (
           <div className="space-y-4 pb-20 px-4 py-6">
             {/* Header User */}
@@ -1413,6 +1449,9 @@ const AppContent: React.FC = () => {
                    {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
                 </button>
                 <button onClick={() => setIsEditingProfile(true)} className="p-2.5 bg-gray-50 rounded-xl text-gray-400 active:scale-90 transition-all"><Edit3 size={18} /></button>
+                {currentUser?.email === 'alexkors1703@gmail.com' && (
+                  <button onClick={() => setIsAdmin(true)} className="p-2.5 bg-gray-900 rounded-xl text-white active:scale-90 transition-all"><ShieldCheck size={18} /></button>
+                )}
               </div>
             </div>
 
@@ -1584,34 +1623,149 @@ const AppContent: React.FC = () => {
 
       {/* Shared Modals */}
       {selectedProduct && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-md rounded-[48px] p-8 animate-slideUp relative shadow-2xl">
-             <button onClick={() => setSelectedProduct(null)} className="absolute top-6 right-6 p-2 bg-gray-50 rounded-full"><X size={20} /></button>
-             <div className="w-52 h-52 mx-auto rounded-[40px] overflow-hidden shadow-2xl mb-8 -mt-16 bg-white p-1 border-4 border-white"><img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover rounded-[36px]" /></div>
-             <h3 className="text-2xl font-black text-gray-900 mb-2 uppercase tracking-tight">{selectedProduct.name}</h3>
-             <p className="text-xs text-gray-500 leading-relaxed mb-6 font-medium">{selectedProduct.description}</p>
-             
-             {selectedProduct.benefits && selectedProduct.benefits.length > 0 && (
-               <div className="mb-8 animate-fadeIn">
-                 <h4 className="text-[10px] font-black uppercase tracking-[0.2em] mb-4 text-gray-400">Преимущества</h4>
-                 <div className="flex flex-wrap gap-2">
-                   {selectedProduct.benefits.map((benefit, idx) => (
-                     <div 
-                       key={idx} 
-                       className="px-4 py-2.5 rounded-2xl text-[9px] font-black uppercase tracking-wider flex items-center gap-2 border border-gray-100 bg-gray-50 text-gray-600 transition-all hover:scale-105"
-                     >
-                       <Sparkles size={10} className="text-pink-500" />
-                       {benefit}
-                     </div>
-                   ))}
-                 </div>
+        <div className="fixed inset-0 z-50 bg-white overflow-y-auto animate-fadeIn flex flex-col font-['Montserrat']">
+           {/* Header Image Area */}
+           <div className="relative h-[60vh] shrink-0">
+             <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" />
+             <div className="absolute inset-0 bg-gradient-to-b from-black/10 to-transparent" />
+           </div>
+
+           {/* Content Area */}
+           <div 
+             className="flex-1 bg-white rounded-t-[48px] relative p-8 shadow-[0_-20px_40px_rgba(0,0,0,0.1)] space-y-6"
+             style={{ marginTop: '-30px', paddingBottom: '102px', height: '297.25px' }}
+           >
+             <div className="flex justify-between items-start">
+               <h3 
+                 className="font-black text-gray-900 uppercase tracking-tight leading-tight max-w-[80%]"
+                 style={{ marginTop: '2px', height: '25px', width: '260.844px', fontSize: '22px', lineHeight: '25px', marginBottom: '0px', marginRight: '0px' }}
+               >{selectedProduct.name}</h3>
+               <button 
+                 onClick={() => { setSelectedProduct(null); setSelectedWeightIndex(0); }} style={{ marginRight: '-5px', marginTop: '-5px' }} 
+                 className="w-10 h-10 bg-gray-50 rounded-full flex items-center justify-center text-gray-400 active:scale-90 transition-all"
+               >
+                 <X size={20} />
+               </button>
+             </div>
+
+             <p 
+               className="text-sm text-gray-400 leading-relaxed font-medium"
+               style={{ marginTop: '2px', marginLeft: '0px' }}
+             >{selectedProduct.description}</p>
+
+             {/* Weight Toggler */}
+             {selectedProduct.weights && selectedProduct.weights.length > 0 && (
+               <div 
+                 className="flex justify-center"
+                 style={{ marginTop: '13px', marginBottom: '-3px', marginRight: '0px' }}
+               >
+                 {selectedProduct.weights.length === 1 ? (
+                   <div className="inline-flex px-6 py-2 bg-gray-50 rounded-2xl border border-gray-100 text-[10px] font-black uppercase tracking-widest text-gray-900">
+                     {selectedProduct.weights[0].label} г.
+                   </div>
+                 ) : (
+                   <div className="bg-[#d1d5db] p-1 rounded-full flex gap-1 w-full max-w-[180px] border border-gray-200 shadow-inner">
+                     {selectedProduct.weights.map((w, idx) => (
+                       <button
+                         key={idx}
+                         onClick={() => setSelectedWeightIndex(idx)}
+                         className={`flex-1 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
+                           selectedWeightIndex === idx 
+                             ? 'bg-white text-gray-900 shadow-sm' 
+                             : 'text-white hover:text-gray-100'
+                         }`}
+                       >
+                         {w.label} г.
+                       </button>
+                     ))}
+                   </div>
+                 )}
                </div>
              )}
 
-             <div className="flex gap-4 items-center">
-               <div className="flex-1 text-2xl font-black text-gray-900">{selectedProduct.price} ₽</div>
-               <button onClick={() => { addToCart(selectedProduct); setSelectedProduct(null); }} className="flex-[2] bg-gray-900 text-white font-black py-5 rounded-[24px] shadow-2xl uppercase text-[11px] tracking-[0.2em] active:scale-95 transition-transform">В корзину</button>
+             {/* Composition Link */}
+             {selectedProduct.composition && (
+               <div className="flex justify-center pt-2">
+                 <button 
+                   onClick={() => setIsCompositionOpen(true)}
+                   className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 border-b border-gray-100 hover:text-gray-900 transition-colors"
+                   style={{ marginTop: '-20px', marginBottom: '-8px', paddingBottom: '4px', height: '20px' }}
+                 >
+                   Состав
+                 </button>
+               </div>
+             )}
+           </div>
+
+           {/* Sticky Bottom Bar */}
+           <div className="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-white via-white to-transparent pointer-events-none">
+             <div 
+              className="max-w-md mx-auto flex items-center justify-between pointer-events-auto"
+              style={{ marginTop: '0px', marginBottom: '-3px', marginRight: '5px', marginLeft: '10px' }}
+            >
+               <div className="flex flex-col">
+                 <span className="text-2xl font-black text-gray-900">
+                   {selectedProduct.weights && selectedProduct.weights[selectedWeightIndex] 
+                     ? selectedProduct.weights[selectedWeightIndex].price 
+                     : selectedProduct.price} ₽
+                 </span>
+               </div>
+               <button 
+                 onClick={() => {
+                   addToCart(selectedProduct, selectedProduct.weights?.length ? selectedWeightIndex : undefined);
+                   setSelectedProduct(null);
+                   setSelectedWeightIndex(0);
+                 }}
+                 className="bg-[#050f1f] text-white font-black py-4 px-10 rounded-[24px] uppercase text-[10px] tracking-[0.2em] shadow-2xl active:scale-95 transition-all"
+               >
+                 В корзину
+               </button>
              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Composition Bottom Sheet */}
+      {isCompositionOpen && selectedProduct && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="absolute inset-0" onClick={() => setIsCompositionOpen(false)} />
+          <div className="bg-[#1a1a1a] w-full max-w-md rounded-t-[32px] p-8 animate-slideUp relative shadow-2xl overflow-y-auto max-h-[85vh]">
+            <div className="w-12 h-1 bg-gray-700 rounded-full mx-auto mb-8" />
+            
+            <div className="space-y-8 text-white">
+              <section>
+                <h4 className="text-xl font-bold mb-3">Состав</h4>
+                <p className="text-sm text-gray-400 leading-relaxed">{selectedProduct.composition}</p>
+              </section>
+
+              {selectedProduct.benefits && selectedProduct.benefits.length > 0 && (
+                <section>
+                  <h4 className="text-xl font-bold mb-3">Преимущества</h4>
+                  <div className="space-y-2">
+                    {selectedProduct.benefits.map((benefit, idx) => (
+                      <div key={idx} className="flex items-center gap-3 text-sm text-gray-400">
+                        <Sparkles size={16} className="text-pink-400 shrink-0" />
+                        <span>{benefit}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {selectedProduct.contraindications && (
+                <section>
+                  <h4 className="text-xl font-bold mb-3">Противопоказания</h4>
+                  <p className="text-sm text-gray-400 leading-relaxed">{selectedProduct.contraindications}</p>
+                </section>
+              )}
+
+              <button 
+                onClick={() => setIsCompositionOpen(false)}
+                className="w-full bg-[#333] text-white font-bold py-4 rounded-2xl mt-4 active:scale-95 transition-all"
+              >
+                Понятно
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1642,16 +1796,16 @@ const AppContent: React.FC = () => {
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
                {cart.length === 0 ? <p className="text-center py-20 text-gray-300 font-black uppercase tracking-widest text-xs">Корзина пуста</p> : (
                  <>
-                   {cartTotal < MIN_ORDER_FREE_DELIVERY && (
+                   {cartTotal < MIN_ORDER_FREE_DELIVERY && !isZheleznogorsk && (
                      <div className="bg-amber-50 p-4 rounded-2xl flex items-center gap-3 text-[10px] font-bold text-amber-700 uppercase leading-tight animate-fadeIn">
                         <Info size={16} className="text-amber-800 shrink-0" />
                         <span>Добавьте еще на {MIN_ORDER_FREE_DELIVERY - cartTotal} ₽ для бесплатной доставки!</span>
                      </div>
                    )}
-                   {cart.map(item => (
-                     <div key={item.id} className="flex gap-4 items-center bg-white p-4 rounded-[28px] border border-gray-50 shadow-sm relative group">
+                   {cart.map((item, idx) => (
+                     <div key={`${item.id}-${item.selectedWeight?.label || idx}`} className="flex gap-4 items-center bg-white p-4 rounded-[28px] border border-gray-50 shadow-sm relative group">
                         <button 
-                          onClick={() => removeFromCart(item.id)}
+                          onClick={() => removeFromCart(item.id, item.selectedWeight?.label)}
                           className="absolute -top-2 -right-2 w-8 h-8 bg-white border border-gray-100 rounded-full flex items-center justify-center text-red-400 shadow-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-red-50 z-10"
                         >
                           <Trash2 size={14} />
@@ -1659,12 +1813,15 @@ const AppContent: React.FC = () => {
                         <img src={item.image} className="w-16 h-16 rounded-2xl object-cover" alt="" />
                         <div className="flex-1">
                            <h4 className="text-xs font-black text-gray-900">{item.name}</h4>
-                           <p className="text-[10px] font-black text-pink-500 mt-1">{item.price} ₽</p>
+                           {item.selectedWeight && (
+                             <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">{item.selectedWeight.label}</p>
+                           )}
+                           <p className="text-[10px] font-black text-pink-500 mt-1">{item.selectedWeight?.price || item.price} ₽</p>
                         </div>
                         <div className="flex items-center gap-3 bg-gray-50 px-3 py-1.5 rounded-full">
-                           <button onClick={() => updateQuantity(item.id, -1)} className="text-gray-400"><Minus size={14} /></button>
+                           <button onClick={() => updateQuantity(item.id, -1, item.selectedWeight?.label)} className="text-gray-400"><Minus size={14} /></button>
                            <span className="text-[11px] font-black">{item.quantity}</span>
-                           <button onClick={() => updateQuantity(item.id, 1)} className="text-gray-400"><Plus size={14} /></button>
+                           <button onClick={() => updateQuantity(item.id, 1, item.selectedWeight?.label)} className="text-gray-400"><Plus size={14} /></button>
                         </div>
                      </div>
                    ))}
@@ -1818,14 +1975,17 @@ const AppContent: React.FC = () => {
                                 <span className="px-3 py-1 bg-pink-50 text-pink-500 rounded-full text-[10px] font-black">{cart.reduce((acc, item) => acc + item.quantity, 0)} шт.</span>
                              </div>
                              <div className="space-y-3 max-h-48 overflow-y-auto pr-2 scrollbar-hide">
-                                {cart.map(item => (
-                                  <div key={item.id} className="flex items-center gap-3 group">
+                                {cart.map((item, idx) => (
+                                  <div key={`${item.id}-${item.selectedWeight?.label || idx}`} className="flex items-center gap-3 group">
                                      <img src={item.image} alt={item.name} className="w-10 h-10 rounded-lg object-cover shadow-sm" />
                                      <div className="flex-1 flex flex-col">
                                         <span className={`text-xs font-bold ${isDarkMode ? 'text-white/90' : 'text-gray-800'}`}>{item.name}</span>
+                                        {item.selectedWeight && (
+                                          <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">{item.selectedWeight.label}</span>
+                                        )}
                                         <span className="text-[10px] text-gray-400 font-medium">Количество: {item.quantity}</span>
                                      </div>
-                                     <span className="text-xs font-black text-pink-500 shrink-0">{item.price * item.quantity} ₽</span>
+                                     <span className="text-xs font-black text-pink-500 shrink-0">{(item.selectedWeight?.price || item.price) * item.quantity} ₽</span>
                                   </div>
                                 ))}
                              </div>
@@ -2089,13 +2249,13 @@ const AppContent: React.FC = () => {
 
       {/* Nav Bar */}
       <nav className={`fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md border-t px-6 py-4 flex justify-between items-center z-40 rounded-t-[32px] transition-colors duration-500 ${isDarkMode ? 'bg-[#1a1a1a] border-gray-800 shadow-[0_-15px_50px_rgba(0,0,0,0.3)]' : 'bg-white border-gray-50 shadow-[0_-15px_50px_rgba(0,0,0,0.08)]'}`}>
-        <button onClick={() => { setActiveTab('shop'); }} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'shop' ? 'text-pink-500' : 'text-gray-300'}`}>
-          <ShoppingBag size={22} />
-          <span className="text-[8px] font-black uppercase tracking-widest">Шоп</span>
-        </button>
         <button onClick={() => { setActiveTab('zen'); }} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'zen' ? 'text-green-500' : 'text-gray-300'}`}>
           <Sparkles size={22} />
           <span className="text-[8px] font-black uppercase tracking-widest">Дзен</span>
+        </button>
+        <button onClick={() => { setActiveTab('shop'); }} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'shop' ? 'text-pink-500' : 'text-gray-300'}`}>
+          <ShoppingBag size={22} />
+          <span className="text-[8px] font-black uppercase tracking-widest">Шоп</span>
         </button>
         <button onClick={() => { setIsCartOpen(true); }} className={`flex flex-col items-center gap-1 transition-all relative ${isCartOpen ? 'text-blue-500' : 'text-gray-300'}`}>
           <ShoppingBag size={22} />

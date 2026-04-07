@@ -701,6 +701,17 @@ app.post("/api/auth/mock", async (req, res) => {
 
 // Server initialization
 const startServer = async () => {
+  // CORS for VK ID and other services
+  app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
   const isProd = process.env.NODE_ENV === "production" || process.env.AMVERA === "true" || !process.env.NODE_ENV;
 
   if (!isProd) {

@@ -7,6 +7,11 @@ export enum Category {
   COMPLEX = 'Комплексы'
 }
 
+export interface ProductWeight {
+  label: string;
+  price: number;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -17,6 +22,9 @@ export interface Product {
   benefits: string[];
   usage: string;
   color: string; // for UI accents
+  composition?: string;
+  contraindications?: string;
+  weights?: ProductWeight[];
 }
 
 export interface RelaxTip {

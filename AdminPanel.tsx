@@ -54,7 +54,7 @@ const ORDER_STATUSES = [
 ];
 
 
-export const AdminPanel: React.FC = () => {
+export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
   const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'users'>('products');
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -813,6 +813,15 @@ export const AdminPanel: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center gap-3">
+              {onBack && (
+                <button 
+                  onClick={onBack}
+                  className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-900 transition-all mr-2"
+                  title="Вернуться в магазин"
+                >
+                  <ArrowLeft size={20} />
+                </button>
+              )}
               <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-200">
                 <LayoutDashboard size={20} />
               </div>
@@ -1024,6 +1033,100 @@ export const AdminPanel: React.FC = () => {
                     onChange={e => setEditingProduct(prev => ({ ...prev, description: e.target.value }))}
                     className="w-full bg-gray-50 border-none rounded-2xl py-4 pl-12 pr-4 text-xs font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none resize-none"
                     placeholder="Краткое описание товара..."
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Состав</label>
+                <div className="relative">
+                  <FileText className="absolute left-4 top-4 text-gray-300" size={16} />
+                  <textarea 
+                    rows={2}
+                    value={editingProduct?.composition || ''}
+                    onChange={e => setEditingProduct(prev => ({ ...prev, composition: e.target.value }))}
+                    className="w-full bg-gray-50 border-none rounded-2xl py-4 pl-12 pr-4 text-xs font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none resize-none"
+                    placeholder="Ингредиенты, состав..."
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex justify-between items-center px-1">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Варианты граммовки (опционально)</label>
+                  <button 
+                    type="button"
+                    onClick={() => setEditingProduct(prev => ({
+                      ...prev,
+                      weights: [...(prev?.weights || []), { label: '', price: prev?.price || 0 }]
+                    }))}
+                    className="text-blue-600 flex items-center gap-1 text-[10px] font-black uppercase tracking-widest hover:text-blue-700 transition-colors"
+                  >
+                    <Plus size={14} /> Добавить
+                  </button>
+                </div>
+                
+                <div className="space-y-3">
+                  {(editingProduct?.weights || []).map((w, idx) => (
+                    <div key={idx} className="flex gap-3 items-center bg-gray-50 p-4 rounded-2xl border border-gray-100 animate-fadeIn">
+                      <div className="flex-1 space-y-1">
+                        <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Метка (напр: 230 г.)</label>
+                        <input 
+                          type="text"
+                          value={w.label}
+                          onChange={e => {
+                            const newWeights = [...(editingProduct?.weights || [])];
+                            newWeights[idx].label = e.target.value;
+                            setEditingProduct(prev => ({ ...prev, weights: newWeights }));
+                          }}
+                          className="w-full bg-white border-none rounded-xl py-2 px-3 text-[11px] font-bold outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+                          placeholder="230 г."
+                        />
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <label className="text-[8px] font-black text-gray-400 uppercase tracking-widest ml-1">Цена (₽)</label>
+                        <input 
+                          type="number"
+                          value={w.price}
+                          onChange={e => {
+                            const newWeights = [...(editingProduct?.weights || [])];
+                            newWeights[idx].price = Number(e.target.value);
+                            setEditingProduct(prev => ({ ...prev, weights: newWeights }));
+                          }}
+                          className="w-full bg-white border-none rounded-xl py-2 px-3 text-[11px] font-bold outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+                          placeholder="400"
+                        />
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          const newWeights = (editingProduct?.weights || []).filter((_, i) => i !== idx);
+                          setEditingProduct(prev => ({ ...prev, weights: newWeights }));
+                        }}
+                        className="mt-4 p-2 text-red-400 hover:text-red-500 transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+                  {(editingProduct?.weights || []).length === 0 && (
+                    <p className="text-center py-4 text-[9px] font-bold text-gray-400 uppercase tracking-widest border border-dashed border-gray-200 rounded-2xl">
+                      Если не указано, будет использоваться основная цена
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Противопоказания (опционально)</label>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-4 text-gray-300" size={16} />
+                  <textarea 
+                    rows={2}
+                    value={editingProduct?.contraindications || ''}
+                    onChange={e => setEditingProduct(prev => ({ ...prev, contraindications: e.target.value }))}
+                    className="w-full bg-gray-50 border-none rounded-2xl py-4 pl-12 pr-4 text-xs font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none resize-none"
+                    placeholder="Укажите противопоказания..."
                   />
                 </div>
               </div>
