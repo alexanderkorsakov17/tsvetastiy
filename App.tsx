@@ -1632,12 +1632,12 @@ const AppContent: React.FC = () => {
 
            {/* Content Area */}
            <div 
-             className="flex-1 bg-white rounded-t-[48px] relative p-8 shadow-[0_-20px_40px_rgba(0,0,0,0.1)] space-y-4"
-             style={{ marginTop: '-48px', paddingBottom: '120px' }}
+             className="flex-1 bg-white rounded-t-[48px] relative p-8 shadow-[0_-20px_40px_rgba(0,0,0,0.1)] space-y-6"
+             style={{ marginTop: '-48px' }}
            >
              <div className="flex justify-between items-start">
                <h3 
-                 className="font-black text-gray-900 uppercase tracking-tight leading-tight max-w-[80%] text-2xl"
+                 className="font-black text-gray-900 uppercase tracking-tight leading-tight max-w-[80%] text-xl truncate"
                >{selectedProduct.name}</h3>
                <button 
                  onClick={() => { setSelectedProduct(null); setSelectedWeightIndex(0); }} style={{ marginRight: '-5px', marginTop: '-5px' }} 
@@ -1647,13 +1647,13 @@ const AppContent: React.FC = () => {
                </button>
              </div>
 
-             <p className="text-sm text-gray-400 leading-relaxed font-medium" style={{ marginTop: '13px' }}>
+             <p className="text-sm text-gray-400 leading-relaxed font-medium">
                {selectedProduct.description}
              </p>
 
              {/* Benefits Section */}
              {selectedProduct.benefits && selectedProduct.benefits.length > 0 && (
-               <div className="flex flex-wrap gap-2 py-1" style={{ marginTop: '3px' }}>
+               <div className="flex flex-wrap gap-2">
                  {selectedProduct.benefits.map((benefit, idx) => (
                    <div key={idx} className="flex items-center gap-1.5 bg-pink-50/50 px-3 py-1.5 rounded-full border border-pink-100/50">
                      <Sparkles size={12} className="text-pink-400 shrink-0" />
@@ -1663,73 +1663,69 @@ const AppContent: React.FC = () => {
                </div>
              )}
 
-             {/* Weight Toggler */}
-             {selectedProduct.weights && selectedProduct.weights.length > 0 && (
-               <div className="flex justify-center py-2">
-                 {selectedProduct.weights.length === 1 ? (
-                   <div 
-                     className="inline-flex px-6 py-2 bg-gray-50 rounded-2xl border border-gray-100 text-[10px] font-black uppercase tracking-widest text-gray-900"
-                     style={{ marginTop: '-21px', marginRight: '0px', marginBottom: '0px' }}
-                   >
-                     {selectedProduct.weights[0].label} г.
-                   </div>
-                 ) : (
-                   <div 
-                     className="bg-[#d1d5db] p-1 rounded-full flex gap-1 w-full max-w-[180px] border border-gray-200 shadow-inner"
-                     style={{ marginTop: '-21px', marginRight: '0px', marginBottom: '0px' }}
-                   >
-                     {selectedProduct.weights.map((w, idx) => (
-                       <button
-                         key={idx}
-                         onClick={() => setSelectedWeightIndex(idx)}
-                         className={`flex-1 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
-                           selectedWeightIndex === idx 
-                             ? 'bg-white text-gray-900 shadow-sm' 
-                             : 'text-white hover:text-gray-100'
-                         }`}
-                       >
-                         {w.label} г.
-                       </button>
-                     ))}
-                   </div>
-                 )}
-               </div>
-             )}
+             {/* Weight Toggler & Composition */}
+             <div className="space-y-3">
+               {selectedProduct.weights && selectedProduct.weights.length > 0 && (
+                 <div className="flex justify-center">
+                    {selectedProduct.weights.length === 1 ? (
+                      <div className="bg-[#d1d5db] p-1.5 rounded-full flex justify-center w-full max-w-[160px] border border-gray-200 shadow-inner">
+                        <div className="flex-1 py-2.5 bg-white text-gray-900 rounded-full text-base font-black uppercase tracking-widest text-center shadow-sm">
+                          {selectedProduct.weights[0].label} г.
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-[#d1d5db] p-1.5 rounded-full flex gap-1 w-full max-w-[260px] border border-gray-200 shadow-inner">
+                        {selectedProduct.weights.map((w, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setSelectedWeightIndex(idx)}
+                            className={`flex-1 py-2.5 rounded-full text-base font-black uppercase tracking-widest transition-all ${
+                              selectedWeightIndex === idx 
+                                ? 'bg-white text-gray-900 shadow-sm' 
+                                : 'text-white hover:text-gray-100'
+                            }`}
+                          >
+                            {w.label} г.
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                 </div>
+               )}
 
-             {/* Composition Link */}
-             {selectedProduct.composition && (
-               <div className="flex justify-center">
-                 <button 
-                   onClick={() => setIsCompositionOpen(true)}
-                   className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 border-b border-gray-100 hover:text-gray-900 transition-colors py-1"
-                   style={{ marginTop: '-21px' }}
-                 >
-                   Состав
-                 </button>
-               </div>
-             )}
-           </div>
+               {/* Composition Link */}
+               {selectedProduct.composition && (
+                 <div className="flex justify-center">
+                   <button 
+                     onClick={() => setIsCompositionOpen(true)}
+                     className="text-xs font-black uppercase tracking-[0.2em] text-gray-400 border-b border-gray-100 hover:text-gray-900 transition-colors py-1"
+                   >
+                     Состав
+                   </button>
+                 </div>
+               )}
+             </div>
 
-           {/* Sticky Bottom Bar */}
-           <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md p-6 bg-gradient-to-t from-white via-white to-transparent pointer-events-none z-10">
-             <div 
-              className="max-w-md mx-auto flex items-center justify-between pointer-events-auto"
-              style={{ marginTop: '0px', marginBottom: '-3px', marginRight: '5px', marginLeft: '10px' }}
-            >
+             {/* Price and Add to Cart - Moved to end of flow */}
+             <div className="flex items-center justify-between pt-6 border-t border-gray-50">
                <div className="flex flex-col">
-                 <span className="text-2xl font-black text-gray-900">
-                   {selectedProduct.weights && selectedProduct.weights[selectedWeightIndex] 
-                     ? selectedProduct.weights[selectedWeightIndex].price 
-                     : selectedProduct.price} ₽
-                 </span>
+                 <div className="flex items-baseline gap-1 ml-[2px]">
+                   <span className="text-4xl font-black text-gray-900">
+                     {selectedProduct.weights && selectedProduct.weights[selectedWeightIndex] 
+                       ? selectedProduct.weights[selectedWeightIndex].price 
+                       : selectedProduct.price}
+                   </span>
+                   <span className="text-xl font-bold text-gray-900">₽</span>
+                 </div>
                </div>
+
                <button 
                  onClick={() => {
                    addToCart(selectedProduct, selectedProduct.weights?.length ? selectedWeightIndex : undefined);
                    setSelectedProduct(null);
                    setSelectedWeightIndex(0);
                  }}
-                 className="bg-[#050f1f] text-white font-black py-4 px-10 rounded-[24px] uppercase text-[10px] tracking-[0.2em] shadow-2xl active:scale-95 transition-all"
+                 className="bg-[#0f172a] text-white px-10 py-4 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] shadow-xl shadow-gray-200 active:scale-95 transition-all"
                >
                  В корзину
                </button>
