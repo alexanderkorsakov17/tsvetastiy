@@ -19,6 +19,7 @@ export interface Product {
   description: string;
   price: number;
   image: string;
+  images?: string[];
   benefits: string[];
   usage: string;
   color: string; // for UI accents

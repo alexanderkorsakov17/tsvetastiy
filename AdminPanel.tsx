@@ -114,6 +114,47 @@ export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
     setTimeout(() => setCopySuccess(null), 2000);
   };
 
+  const handleGalleryImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      setIsUploading(true);
+      try {
+        const currentImages = editingProduct?.images || [];
+        const newImages = [...currentImages];
+        
+        for (let i = 0; i < files.length; i++) {
+          if (newImages.length >= 5) break;
+          
+          const formData = new FormData();
+          formData.append('image', files[i]);
+
+          const response = await fetch('/api/admin/upload', {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            newImages.push(data.url);
+          }
+        }
+        
+        setEditingProduct(prev => ({ ...prev, images: newImages }));
+      } catch (error) {
+        console.error("Error uploading gallery images:", error);
+      } finally {
+        setIsUploading(false);
+      }
+    }
+  };
+
+  const removeGalleryImage = (index: number) => {
+    setEditingProduct(prev => ({
+      ...prev,
+      images: (prev?.images || []).filter((_, i) => i !== index)
+    }));
+  };
+
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -638,6 +679,7 @@ export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
                 description: '',
                 category: Category.TEA,
                 image: '',
+                images: [],
                 benefits: [],
                 usage: '',
                 color: '#E1BEE7'
@@ -941,12 +983,12 @@ export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
                   </select>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Фото товара</label>
-                  <div className="flex flex-col gap-3">
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Главное изображение</label>
+                  <div className="space-y-4">
                     {editingProduct?.image && (
-                      <div className="relative w-full h-32 rounded-2xl overflow-hidden bg-gray-50 border border-gray-100">
-                        <img src={editingProduct.image || undefined} className="w-full h-full object-cover" alt="Preview" />
+                      <div className="relative w-full h-48 rounded-2xl overflow-hidden border border-gray-100 group">
+                        <img src={editingProduct.image || undefined} alt="" className="w-full h-full object-cover" />
                         <button 
                           type="button"
                           onClick={() => setEditingProduct(prev => ({ ...prev, image: '' }))}
@@ -964,7 +1006,7 @@ export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
                           ) : (
                             <ImageIcon size={16} />
                           )}
-                          {isUploading ? 'Загрузка...' : 'Загрузить файл'}
+                          {isUploading ? 'Загрузка...' : 'Загрузить главное'}
                         </div>
                         <input 
                           type="file" 
@@ -981,10 +1023,46 @@ export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
                           value={editingProduct?.image || ''}
                           onChange={e => setEditingProduct(prev => ({ ...prev, image: e.target.value }))}
                           className="w-full bg-gray-50 border-none rounded-2xl py-4 pl-12 pr-4 text-xs font-bold focus:ring-2 focus:ring-blue-500 transition-all outline-none"
-                          placeholder="Или вставьте ссылку..."
+                          placeholder="Или ссылка на главное..."
                         />
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center px-1">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Галерея (до 5 фото)</label>
+                    <span className="text-[10px] font-black text-blue-500">{(editingProduct?.images || []).length}/5</span>
+                  </div>
+                  
+                  <div className="grid grid-cols-5 gap-2">
+                    {(editingProduct?.images || []).map((img, idx) => (
+                      <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-gray-100 group">
+                        <img src={img || undefined} alt="" className="w-full h-full object-cover" />
+                        <button 
+                          type="button"
+                          onClick={() => removeGalleryImage(idx)}
+                          className="absolute top-1 right-1 w-6 h-6 bg-white/90 backdrop-blur-sm rounded-lg flex items-center justify-center text-red-500 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                    {(editingProduct?.images || []).length < 5 && (
+                      <label className={`aspect-square rounded-xl border-2 border-dashed border-gray-100 flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-blue-200 hover:bg-blue-50/30 transition-all ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                        <Plus size={16} className="text-gray-300" />
+                        <span className="text-[8px] font-black text-gray-400 uppercase">Добавить</span>
+                        <input 
+                          type="file" 
+                          accept="image/*"
+                          multiple
+                          onChange={handleGalleryImageUpload}
+                          disabled={isUploading}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
                   </div>
                 </div>
 

@@ -1,5 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import * as VKID from '@vkid/sdk';
 import { createPortal } from 'react-dom';
 import { ShoppingBag, Sparkles, User, Heart, ChevronRight, X, Sparkle, Share2, Copy, Users, Gift, TrendingUp, Wallet, Info, Trash2, Plus, Minus, Award, Target, Zap, ChevronDown, ChevronUp, History, ArrowUpRight, ArrowDownLeft, Send, MessageSquare, ExternalLink, Clock, LogOut, ShieldCheck, Edit3, MapPin, Calendar, Check, Search, Truck, Package, Store, Home, AlertCircle, ThumbsUp, Coins, Repeat, HeartHandshake, Layers, Moon, Sun, Maximize2, Minimize2, ChevronLeft, Navigation, CreditCard, ArrowRight, RefreshCw, FileText } from 'lucide-react';
@@ -870,6 +871,7 @@ const AppContent: React.FC = () => {
     return (saved === 'shop' || saved === 'zen' || saved === 'profile') ? saved : 'shop';
   });
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [selectedWeightIndex, setSelectedWeightIndex] = useState<number>(0);
   const [isCompositionOpen, setIsCompositionOpen] = useState(false);
   const [selectedTip, setSelectedTip] = useState<RelaxTip | null>(null);
@@ -1418,7 +1420,7 @@ const AppContent: React.FC = () => {
             </div>
             <div className="grid grid-cols-2 gap-4 mt-3">
               {filteredProducts.map(product => (
-                <div key={product.id} onClick={() => { setSelectedProduct(product); setSelectedWeightIndex(0); }} className="bg-white rounded-[32px] p-3 shadow-sm border border-gray-100 flex flex-col gap-3 active:scale-95 transition-transform group">
+                <div key={product.id} onClick={() => { setSelectedProduct(product); setSelectedWeightIndex(0); setCurrentImageIndex(0); }} className="bg-white rounded-[32px] p-3 shadow-sm border border-gray-100 flex flex-col gap-3 active:scale-95 transition-transform group">
                   <div className="aspect-square rounded-[24px] overflow-hidden bg-gray-50 relative">
                     <img src={product.image || undefined} alt={product.name} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
                   </div>
@@ -1624,23 +1626,73 @@ const AppContent: React.FC = () => {
       {/* Shared Modals */}
       {selectedProduct && (
         <div className="fixed inset-0 z-50 bg-white overflow-y-auto animate-fadeIn flex flex-col font-['Montserrat'] max-w-md mx-auto shadow-2xl">
-           {/* Header Image Area */}
-           <div className="relative h-[60vh] shrink-0">
-             <img src={selectedProduct.image || undefined} alt={selectedProduct.name} className="w-full h-full object-cover" />
-             <div className="absolute inset-0 bg-gradient-to-b from-black/10 to-transparent" />
+           {/* Header Image Area with Carousel */}
+           <div className="relative h-[60vh] shrink-0 overflow-hidden bg-gray-100">
+             <AnimatePresence initial={false} mode="wait">
+               <motion.img
+                 key={currentImageIndex}
+                 src={[selectedProduct.image, ...(selectedProduct.images || [])].filter(Boolean)[currentImageIndex] || undefined}
+                 alt={selectedProduct.name}
+                 initial={{ opacity: 0, x: 100 }}
+                 animate={{ opacity: 1, x: 0 }}
+                 exit={{ opacity: 0, x: -100 }}
+                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                 className="w-full h-full object-cover"
+                 drag="x"
+                 dragConstraints={{ left: 0, right: 0 }}
+                 dragElastic={0.2}
+                 onDragEnd={(_, info) => {
+                   const images = [selectedProduct.image, ...(selectedProduct.images || [])].filter(Boolean);
+                   if (images.length <= 1) return;
+                   
+                   if (info.offset.x < -50) {
+                     setCurrentImageIndex((prev) => (prev + 1) % images.length);
+                   } else if (info.offset.x > 50) {
+                     setCurrentImageIndex((prev) => (prev - 1 + images.length) % images.length);
+                   }
+                 }}
+               />
+             </AnimatePresence>
+             
+             <div className="absolute inset-0 bg-gradient-to-b from-black/10 to-transparent pointer-events-none" />
+             
+             {/* Carousel Indicators */}
+             {[selectedProduct.image, ...(selectedProduct.images || [])].filter(Boolean).length > 1 && (
+               <div className="absolute bottom-16 left-0 right-0 flex justify-center gap-1.5 z-10">
+                 {[selectedProduct.image, ...(selectedProduct.images || [])].filter(Boolean).map((_, idx) => (
+                   <div 
+                     key={idx} 
+                     className={`h-1 rounded-full transition-all duration-300 ${
+                       currentImageIndex === idx ? 'w-6 bg-white' : 'w-2 bg-white/40'
+                     }`}
+                   />
+                 ))}
+               </div>
+             )}
            </div>
 
            {/* Content Area */}
-           <div 
+           <motion.div 
              className="flex-1 bg-white rounded-t-[48px] relative p-8 shadow-[0_-20px_40px_rgba(0,0,0,0.1)] space-y-6"
              style={{ marginTop: '-48px' }}
+             drag="x"
+             dragConstraints={{ left: 0, right: 0 }}
+             dragElastic={{ left: 0.8, right: 0.1 }}
+             onDragEnd={(_, info) => {
+               if (info.offset.x < -100) {
+                 setSelectedProduct(null);
+                 setSelectedWeightIndex(0);
+                 setCurrentImageIndex(0);
+               }
+             }}
            >
              <div className="flex justify-between items-start">
                <h3 
                  className="font-black text-gray-900 uppercase tracking-tight leading-tight max-w-[80%] text-xl truncate"
                >{selectedProduct.name}</h3>
                <button 
-                 onClick={() => { setSelectedProduct(null); setSelectedWeightIndex(0); }} style={{ marginRight: '-5px', marginTop: '-5px' }} 
+                 onClick={() => { setSelectedProduct(null); setSelectedWeightIndex(0); setCurrentImageIndex(0); }} 
+                 style={{ marginRight: '-5px', marginTop: '-5px' }}
                  className="w-10 h-10 bg-gray-50 rounded-full flex items-center justify-center text-gray-400 active:scale-90 transition-all"
                >
                  <X size={20} />
@@ -1730,7 +1782,7 @@ const AppContent: React.FC = () => {
                  В корзину
                </button>
              </div>
-           </div>
+           </motion.div>
         </div>
       )}
 
