@@ -54,6 +54,9 @@ export interface User {
   orderCount: number;
   bonusBalance: number;
   invitedBy?: string;
+  partnerStatus?: 'none' | 'pending' | 'approved' | 'rejected';
+  partnerSocialLink?: string;
+  partnerFollowersCount?: number;
   createdAt: string;
   primaryAddress?: string;
   primaryProviderId?: string;

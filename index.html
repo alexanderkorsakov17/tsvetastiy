@@ -16,16 +16,12 @@
         .safe-bottom {
             padding-bottom: env(safe-area-inset-bottom);
         }
-        /* Custom scrollbar for better mobile look */
-        ::-webkit-scrollbar {
-            width: 4px;
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
         }
-        ::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #ff80ab;
-            border-radius: 10px;
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
         }
     </style>
 <script type="importmap">

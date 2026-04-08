@@ -29,7 +29,8 @@ import {
   Users as UsersIcon,
   Award,
   Target,
-  Zap
+  Zap,
+  RefreshCw
 } from 'lucide-react';
 import { Product, Category, User as AppUser, BonusTransaction } from './types';
 
@@ -55,10 +56,11 @@ const ORDER_STATUSES = [
 
 
 export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
-  const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'users'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'users' | 'partners'>('products');
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
+  const [partnerApplications, setPartnerApplications] = useState<AppUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
   const [isAddingProduct, setIsAddingProduct] = useState(false);
@@ -89,6 +91,15 @@ export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
       fetchData();
     }
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'partners' && isAuthenticated) {
+      fetch('/api/admin/partner/applications')
+        .then(res => res.json())
+        .then(data => setPartnerApplications(data))
+        .catch(err => console.error('Failed to re-fetch partner applications:', err));
+    }
+  }, [activeTab, isAuthenticated]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -188,17 +199,20 @@ export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [prodRes, orderRes, userRes] = await Promise.all([
+      const [prodRes, orderRes, userRes, partnerRes] = await Promise.all([
         fetch('/api/products'),
         fetch('/api/admin/orders'),
-        fetch('/api/admin/users')
+        fetch('/api/admin/users'),
+        fetch('/api/admin/partner/applications')
       ]);
       const prodData = await prodRes.json();
       const orderData = await orderRes.json();
       const userData = await userRes.json();
+      const partnerData = await partnerRes.json();
       setProducts(prodData);
       setOrders(orderData);
       setUsers(userData);
+      setPartnerApplications(partnerData);
     } catch (error) {
       console.error('Failed to fetch admin data:', error);
     } finally {
@@ -260,6 +274,214 @@ export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
     }
   };
 
+  const handlePartnerAction = async (userId: string, status: 'approved' | 'rejected') => {
+    try {
+      const res = await fetch(`/api/admin/partner/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      if (res.ok) {
+        setPartnerApplications(prev => prev.filter(app => app.id !== userId));
+        // Update users list if they are already in it
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, partnerStatus: status } : u));
+      }
+    } catch (error) {
+      console.error('Failed to update partner status:', error);
+    }
+  };
+
+  const renderPartners = () => {
+    const approvedPartners = users.filter(u => u.partnerStatus === 'approved');
+
+    return (
+      <div className="space-y-12">
+        {/* Applications Section */}
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-black text-gray-900 uppercase tracking-tight">Заявки в партнеры</h2>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => {
+                  fetch('/api/admin/partner/applications')
+                    .then(res => res.json())
+                    .then(data => setPartnerApplications(data));
+                }}
+                className="p-2 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200 transition-colors"
+                title="Обновить"
+              >
+                <RefreshCw size={16} />
+              </button>
+              <div className="bg-blue-50 px-4 py-2 rounded-xl text-[10px] font-black text-blue-600 uppercase tracking-widest">
+                {partnerApplications.length} новых заявок
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-400">Пользователь</th>
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-400">Соц. сеть</th>
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-400">Подписчики</th>
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-400">Действия</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {partnerApplications.map((app) => (
+                    <tr key={app.id} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <img src={app.photo || undefined} alt="" className="w-10 h-10 rounded-xl object-cover" />
+                          <div>
+                            <div className="text-xs font-black text-gray-900 uppercase tracking-tight">{app.fullName || app.name}</div>
+                            <div className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">ID: {app.id}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <a 
+                          href={app.partnerSocialLink} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-[10px] font-black text-blue-500 hover:underline flex items-center gap-1"
+                        >
+                          {app.partnerSocialLink} <ChevronRight size={12} />
+                        </a>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-xs font-black text-gray-900">{app.partnerFollowersCount?.toLocaleString()}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => handlePartnerAction(app.id, 'approved')}
+                            className="px-4 py-2 bg-green-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-green-600 transition-colors flex items-center gap-1"
+                          >
+                            <Check size={14} /> Одобрить
+                          </button>
+                          <button 
+                            onClick={() => handlePartnerAction(app.id, 'rejected')}
+                            className="px-4 py-2 bg-red-50 text-red-500 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-red-100 transition-colors flex items-center gap-1"
+                          >
+                            <X size={14} /> Отклонить
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {partnerApplications.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-20 text-center">
+                        <div className="flex flex-col items-center gap-4">
+                          <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center text-gray-300">
+                            <Award size={32} />
+                          </div>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Новых заявок нет</p>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* Active Partners Section */}
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-black text-gray-900 uppercase tracking-tight">Активные партнеры</h2>
+            <div className="bg-green-50 px-4 py-2 rounded-xl text-[10px] font-black text-green-600 uppercase tracking-widest">
+              {approvedPartners.length} партнеров
+            </div>
+          </div>
+
+          <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-400">Партнер</th>
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-400">Соц. сеть</th>
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-400">Рефералы</th>
+                    <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-400">Действия</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {approvedPartners.map((partner) => (
+                    <tr key={partner.id} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <img src={partner.photo || undefined} alt="" className="w-10 h-10 rounded-xl object-cover" />
+                          <div>
+                            <div className="text-xs font-black text-gray-900 uppercase tracking-tight">{partner.fullName || partner.name}</div>
+                            <div className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">ID: {partner.id}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        {partner.partnerSocialLink ? (
+                          <a 
+                            href={partner.partnerSocialLink} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-[10px] font-black text-blue-500 hover:underline flex items-center gap-1"
+                          >
+                            {partner.partnerSocialLink.replace('https://', '').replace('www.', '').split('/')[0]}... <ChevronRight size={12} />
+                          </a>
+                        ) : (
+                          <span className="text-[10px] font-bold text-gray-400 uppercase">Не указана</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <UsersIcon size={14} className="text-purple-500" />
+                          <span className="text-xs font-black text-gray-900">
+                            {users.filter(u => u.invitedBy === partner.id).length}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => {
+                              setSelectedUser(partner);
+                              fetchUserHistory(partner.id);
+                            }}
+                            className="p-2 bg-gray-50 text-gray-400 rounded-xl hover:text-blue-600 hover:bg-blue-50 transition-all"
+                            title="Статистика"
+                          >
+                            <HistoryIcon size={16} />
+                          </button>
+                          <button 
+                            onClick={() => handlePartnerAction(partner.id, 'rejected')}
+                            className="p-2 bg-red-50 text-red-400 rounded-xl hover:text-red-600 hover:bg-red-100 transition-all"
+                            title="Удалить из партнеров"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {approvedPartners.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-20 text-center">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Активных партнеров пока нет</p>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
   const renderOrders = () => {
     const filteredOrders = orders.filter(o => 
       o.id.toLowerCase().includes(orderSearch.toLowerCase()) ||
@@ -315,7 +537,7 @@ export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
                     <td className="px-6 py-4">
                       <div className="flex flex-col gap-1 group">
                         <div className="flex items-center gap-2">
-                          <UserIcon size={12} className="text-gray-400" />
+                          <UserIcon size={12} className="text-purple-500" />
                           <span className="text-[10px] font-black uppercase tracking-tight text-gray-900">{order.userName || 'Гость'}</span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -398,17 +620,8 @@ export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
       user.tgId.toLowerCase().includes(userSearch.toLowerCase())
     );
 
-    const getInvitedUsers = (userId: string, level: number) => {
-      const l1 = users.filter(u => u.invitedBy === userId);
-      if (level === 1) return l1;
-      
-      const l2 = users.filter(u => l1.some(l1u => u.invitedBy === l1u.id));
-      if (level === 2) return l2;
-      
-      const l3 = users.filter(u => l2.some(l2u => u.invitedBy === l2u.id));
-      if (level === 3) return l3;
-      
-      return [];
+    const getInvitedUsers = (userId: string) => {
+      return users.filter(u => u.invitedBy === userId);
     };
 
     return (
@@ -435,15 +648,14 @@ export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
                   <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-400">Пользователь</th>
                   <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-400">Контакты</th>
                   <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-400">Баланс</th>
+                  <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-400">Статус</th>
                   <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-400">Рефералы</th>
                   <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-400">Действия</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {filteredUsers.map((user) => {
-                  const l1Count = getInvitedUsers(user.id, 1).length;
-                  const l2Count = getInvitedUsers(user.id, 2).length;
-                  const l3Count = getInvitedUsers(user.id, 3).length;
+                  const invited = getInvitedUsers(user.id);
                   
                   return (
                     <tr key={user.id} className="hover:bg-gray-50/50 transition-colors">
@@ -469,31 +681,50 @@ export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex gap-2">
-                          <div className="flex flex-col items-center px-2 py-1 bg-blue-50 rounded-lg min-w-[40px]">
-                            <span className="text-[8px] font-black text-blue-400 uppercase">L1</span>
-                            <span className="text-[10px] font-black text-blue-600">{l1Count}</span>
-                          </div>
-                          <div className="flex flex-col items-center px-2 py-1 bg-purple-50 rounded-lg min-w-[40px]">
-                            <span className="text-[8px] font-black text-purple-400 uppercase">L2</span>
-                            <span className="text-[10px] font-black text-purple-600">{l2Count}</span>
-                          </div>
-                          <div className="flex flex-col items-center px-2 py-1 bg-pink-50 rounded-lg min-w-[40px]">
-                            <span className="text-[8px] font-black text-pink-400 uppercase">L3</span>
-                            <span className="text-[10px] font-black text-pink-600">{l3Count}</span>
-                          </div>
+                        {user.partnerStatus === 'approved' ? (
+                          <span className="px-3 py-1 bg-green-50 text-green-600 rounded-lg text-[8px] font-black uppercase tracking-widest border border-green-100">Партнер</span>
+                        ) : user.partnerStatus === 'pending' ? (
+                          <span className="px-3 py-1 bg-amber-50 text-amber-600 rounded-lg text-[8px] font-black uppercase tracking-widest border border-amber-100">Заявка</span>
+                        ) : (
+                          <span className="px-3 py-1 bg-gray-50 text-gray-400 rounded-lg text-[8px] font-black uppercase tracking-widest border border-gray-100">Клиент</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <UsersIcon size={14} className="text-purple-500" />
+                          <span className="text-xs font-black text-gray-900">{invited.length}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <button 
-                          onClick={() => {
-                            setSelectedUser(user);
-                            fetchUserHistory(user.id);
-                          }}
-                          className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-all"
-                        >
-                          <HistoryIcon size={18} />
-                        </button>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => {
+                              setSelectedUser(user);
+                              fetchUserHistory(user.id);
+                            }}
+                            className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-all"
+                            title="История"
+                          >
+                            <HistoryIcon size={18} />
+                          </button>
+                          {user.partnerStatus !== 'approved' ? (
+                            <button 
+                              onClick={() => handlePartnerAction(user.id, 'approved')}
+                              className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 hover:text-green-600 hover:bg-green-50 transition-all"
+                              title="Сделать партнером"
+                            >
+                              <Award size={18} />
+                            </button>
+                          ) : (
+                            <button 
+                              onClick={() => handlePartnerAction(user.id, 'rejected')}
+                              className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all"
+                              title="Удалить из партнеров"
+                            >
+                              <X size={18} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -525,37 +756,48 @@ export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                   {/* Left Column: Stats & Levels */}
                   <div className="lg:col-span-2 space-y-8">
-                    <div className="grid grid-cols-3 gap-4">
-                      {[1, 2, 3].map(level => {
-                        const invited = getInvitedUsers(selectedUser.id, level);
+                    <div className="grid grid-cols-1 gap-4">
+                      {(() => {
+                        const invited = getInvitedUsers(selectedUser.id);
                         const totalEarned = userHistory
-                          .filter(h => h.type === 'referral' && h.description.includes(`(L${level})`))
+                          .filter(h => h.type === 'referral')
                           .reduce((sum, h) => sum + h.amount, 0);
                         return (
-                          <div key={level} className="p-6 rounded-[32px] bg-gray-50 border border-gray-100 relative overflow-hidden group">
+                          <div className="p-6 rounded-[32px] bg-gray-50 border border-gray-100 relative overflow-hidden group">
                             <div className="absolute -top-4 -right-4 w-16 h-16 bg-blue-100 rounded-full blur-2xl opacity-0 group-hover:opacity-50 transition-opacity" />
                             <div className="relative z-10">
-                              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Уровень {level}</span>
-                              <div className="text-3xl font-black text-gray-900 mb-1">{invited.length}</div>
-                              <div className="text-[10px] font-bold text-green-600 uppercase tracking-tight">+{totalEarned} баллов</div>
+                              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Партнерская статистика</span>
+                              <div className="flex items-end gap-6">
+                                <div>
+                                  <div className="text-3xl font-black text-gray-900 mb-1">{invited.length}</div>
+                                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">Приглашенных</div>
+                                </div>
+                                <div>
+                                  <div className="text-3xl font-black text-green-600 mb-1">+{totalEarned}</div>
+                                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">Баллов заработано</div>
+                                </div>
+                              </div>
                               
                               {invited.length > 0 && (
-                                <div className="mt-4 pt-4 border-t border-gray-200/50 space-y-2">
-                                  {invited.slice(0, 5).map(u => (
-                                    <div key={u.id} className="flex items-center gap-2">
-                                      <img src={u.photo || undefined} alt="" className="w-4 h-4 rounded-full object-cover" />
-                                      <span className="text-[8px] font-bold text-gray-600 truncate">{u.fullName}</span>
-                                    </div>
-                                  ))}
-                                  {invited.length > 5 && (
-                                    <div className="text-[8px] font-bold text-gray-400 uppercase">и еще {invited.length - 5}...</div>
-                                  )}
+                                <div className="mt-6 pt-6 border-t border-gray-200/50 space-y-3">
+                                  <h5 className="text-[9px] font-black text-gray-900 uppercase tracking-widest">Список приглашенных:</h5>
+                                  <div className="grid grid-cols-2 gap-3">
+                                    {invited.map(u => (
+                                      <div key={u.id} className="flex items-center gap-3 p-2 bg-white rounded-xl border border-gray-100">
+                                        <img src={u.photo || undefined} alt="" className="w-8 h-8 rounded-lg object-cover" />
+                                        <div>
+                                          <p className="text-[9px] font-black text-gray-900 uppercase">{u.fullName}</p>
+                                          <p className="text-[7px] font-bold text-gray-400 uppercase">{u.createdAt}</p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
                               )}
                             </div>
                           </div>
                         );
-                      })}
+                      })()}
                     </div>
 
                     <div className="space-y-4">
@@ -888,9 +1130,20 @@ export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
               </button>
               <button 
                 onClick={() => setActiveTab('users')}
-                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'users' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'users' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >
-                Пользователи
+                Клиенты
+              </button>
+              <button 
+                onClick={() => setActiveTab('partners')}
+                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'partners' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'} relative`}
+              >
+                Партнеры
+                {partnerApplications.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white">
+                    {partnerApplications.length}
+                  </span>
+                )}
               </button>
             </div>
 
@@ -915,8 +1168,10 @@ export const AdminPanel: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
       </div>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {activeTab === 'products' ? renderProducts() : 
-         activeTab === 'orders' ? renderOrders() : renderUsers()}
+        {activeTab === 'products' && renderProducts()}
+        {activeTab === 'orders' && renderOrders()}
+        {activeTab === 'users' && renderUsers()}
+        {activeTab === 'partners' && renderPartners()}
       </main>
 
       {/* Edit/Add Product Modal */}

@@ -204,7 +204,7 @@ const PAID_DELIVERY_FEE = 300;
 
 const DELIVERY_PROVIDERS = [
   { id: 'ozon', name: 'Ozon Доставка', color: 'bg-blue-600', icon: <Package size={20} />, query: 'Ozon пункт выдачи' },
-  { id: 'wb', name: 'Wildberries', color: 'bg-purple-700', icon: <Store size={20} />, query: 'Wildberries пункт выдачи' },
+  { id: 'wb', name: 'Wildberries', color: 'bg-[#5D5FEF]', icon: <Store size={20} />, query: 'Wildberries пункт выдачи' },
   { id: 'yandex', name: 'Яндекс Доставка', color: 'bg-yellow-400', icon: <Truck size={20} />, query: 'Яндекс Маркет пункт выдачи' }
 ];
 
@@ -779,6 +779,7 @@ const VkOneTap = ({ onLoginSuccess, onLoginError, referralCode }: { onLoginSucce
           return fetch('/api/auth/vkid', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify({ 
               access_token: result.access_token,
               // Передаем также code/device_id на всякий случай для логов
@@ -847,6 +848,13 @@ const AppContent: React.FC = () => {
   const [editLocation, setEditLocation] = useState('');
   const [editBirthDate, setEditBirthDate] = useState('');
   const [editCity, setEditCity] = useState('');
+  const [notification, setNotification] = useState<{ message: string, type: 'success' | 'error' } | null>(null);
+
+  const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
   const [citySearch, setCitySearch] = useState('');
   const [showCityDropdown, setShowCityDropdown] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
@@ -959,10 +967,44 @@ const AppContent: React.FC = () => {
   const [bonusTransactions, setBonusTransactions] = useState<BonusTransaction[]>([]);
   const [referrals, setReferrals] = useState<UserProfile[]>([]);
   const [isReferralsModalOpen, setIsReferralsModalOpen] = useState(false);
+  const [isPartnerApplyOpen, setIsPartnerApplyOpen] = useState(false);
+  const [partnerSocialLink, setPartnerSocialLink] = useState('');
+  const [partnerFollowers, setPartnerFollowers] = useState('');
+  const [isApplying, setIsApplying] = useState(false);
+
+  const handlePartnerApply = async () => {
+    if (!partnerSocialLink || !partnerFollowers) return;
+    setIsApplying(true);
+    try {
+      const res = await fetch('/api/partner/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ socialLink: partnerSocialLink, followersCount: partnerFollowers })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCurrentUser(data.user);
+        setIsPartnerApplyOpen(false);
+        // Reset fields
+        setPartnerSocialLink('');
+        setPartnerFollowers('');
+        showNotification('Заявка успешно отправлена!');
+      } else {
+        const errorData = await res.json();
+        showNotification('Ошибка: ' + (errorData.error || 'Неизвестная ошибка'), 'error');
+      }
+    } catch (error) {
+      console.error('Failed to apply for partner:', error);
+      showNotification('Ошибка подключения к серверу', 'error');
+    } finally {
+      setIsApplying(false);
+    }
+  };
 
   const fetchReferrals = async () => {
     try {
-      const res = await fetch('/api/users/me/referrals');
+      const res = await fetch('/api/users/me/referrals', { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         setReferrals(data);
@@ -975,7 +1017,7 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (isLoggedIn) {
       fetchReferrals();
-      fetch('/api/users/me/history')
+      fetch('/api/users/me/history', { credentials: 'include' })
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data)) {
@@ -1012,7 +1054,7 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const response = await fetch('/api/auth/me');
+        const response = await fetch('/api/auth/me', { credentials: 'include' });
         const data = await response.json();
         if (data.user) {
           setCurrentUser(data.user);
@@ -1057,7 +1099,7 @@ const AppContent: React.FC = () => {
 
   const fetchOrders = async () => {
     try {
-      const res = await fetch('/api/orders/my');
+      const res = await fetch('/api/orders/my', { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         setOrders(data);
@@ -1069,7 +1111,7 @@ const AppContent: React.FC = () => {
 
   const handleLogout = async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
       setIsLoggedIn(false);
       setCurrentUser(null);
       setActiveTab('shop');
@@ -1126,7 +1168,7 @@ const AppContent: React.FC = () => {
 
   const refreshUser = async () => {
     try {
-      const response = await fetch('/api/auth/me');
+      const response = await fetch('/api/auth/me', { credentials: 'include' });
       const data = await response.json();
       if (data.user) {
         setCurrentUser(data.user);
@@ -1197,6 +1239,7 @@ const AppContent: React.FC = () => {
     const bonusToApply = useBonuses ? bonusToSpend : 0;
     const newOrderData = {
       total: finalTotal,
+      itemsTotal: cartTotal,
       bonusUsed: bonusToApply,
       items: cart.map(i => i.selectedWeight ? `${i.name} (${i.selectedWeight.label})` : i.name),
       deliveryAddress: `${citySearch}, ${deliveryAddress}`,
@@ -1210,6 +1253,7 @@ const AppContent: React.FC = () => {
       const res = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(newOrderData)
       });
       if (res.ok) {
@@ -1217,7 +1261,7 @@ const AppContent: React.FC = () => {
         setOrders(prev => [newOrder, ...prev]);
         
         // Fetch updated history
-        fetch('/api/users/me/history')
+        fetch('/api/users/me/history', { credentials: 'include' })
           .then(res => res.json())
           .then(data => {
             if (Array.isArray(data)) {
@@ -1248,6 +1292,7 @@ const AppContent: React.FC = () => {
           await fetch('/api/auth/profile', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify({ primaryAddress: deliveryAddress, primaryProviderId: selectedProvider })
           });
         }
@@ -1314,7 +1359,7 @@ const AppContent: React.FC = () => {
             }}
             onLoginError={(err) => {
               console.error('VK Login Error:', err);
-              alert('Ошибка входа через VK ID');
+              showNotification('Ошибка входа через VK ID', 'error');
             }}
           />
         </div>
@@ -1334,12 +1379,12 @@ const AppContent: React.FC = () => {
       const res = await fetch('/api/auth/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(updatedData)
       });
       if (res.ok) {
         const data = await res.json();
         setCurrentUser(data.user);
-        setIsEditingProfile(false);
       }
     } catch (error) {
       console.error('Failed to update profile:', error);
@@ -1380,34 +1425,14 @@ const AppContent: React.FC = () => {
 
       <main className="flex-1 overflow-y-auto">
         {activeTab === 'zen' && (
-          <div className="flex flex-col h-[75vh] animate-fadeIn">
-            <div className="px-4 py-6">
-              <h2 className="text-[10px] font-black text-green-600 uppercase tracking-widest mb-4">Советы Дзен</h2>
-              <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide">
-                {RELAX_TIPS.map(tip => (
-                  <div key={tip.id} onClick={() => setSelectedTip(tip)} className="min-w-[220px] bg-white border border-green-50 p-4 rounded-[28px] shadow-sm flex gap-3 items-center active:scale-95 transition-transform">
-                    <div className="text-2xl bg-green-50 w-10 h-10 flex items-center justify-center rounded-xl shrink-0">{tip.icon}</div>
-                    <h3 className="text-[11px] font-black text-gray-900 leading-tight">{tip.title}</h3>
-                  </div>
-                ))}
-              </div>
+          <div className="flex flex-col items-center justify-center h-[75vh] animate-fadeIn px-8 text-center">
+            <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mb-6">
+              <Sparkles size={32} className="text-green-500" />
             </div>
-            <div className="flex-1 flex flex-col px-4 pb-4 overflow-hidden">
-               <h3 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-4">Муза Релакса</h3>
-               <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 pr-2 scrollbar-hide">
-                 {chatHistory.length === 0 && <p className="text-xs text-center text-gray-300 pt-10 px-8 leading-loose uppercase tracking-widest">Расскажи о своем дне, и я подберу твой идеальный вечер ✨</p>}
-                 {chatHistory.map((msg, i) => (
-                   <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                     <div className={`max-w-[85%] px-4 py-3 rounded-[20px] text-[12px] font-medium ${msg.role === 'user' ? 'bg-blue-500 text-white rounded-tr-none' : 'bg-gray-50 text-gray-700 rounded-tl-none border border-gray-100'}`}>{msg.text}</div>
-                   </div>
-                 ))}
-                 {isAiLoading && <div className="flex items-center gap-1.5 p-3 bg-gray-50 rounded-2xl w-max"><div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse"></div><div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse delay-75"></div><div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse delay-150"></div></div>}
-               </div>
-               <div className="mt-4 flex gap-2 p-1.5 bg-white rounded-full border border-gray-100 shadow-xl items-center">
-                  <input value={aiInput} onChange={(e) => setAiInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAiSend()} placeholder="Напиши что-нибудь..." className="flex-1 bg-transparent px-4 text-xs focus:outline-none" />
-                  <button onClick={handleAiSend} className="bg-blue-500 text-white p-3 rounded-full shadow-lg active:scale-90 transition-all"><Send size={18} /></button>
-               </div>
-            </div>
+            <h2 className="text-xl font-black text-gray-900 uppercase tracking-widest mb-2">Раздел Дзен</h2>
+            <p className="text-xs text-gray-400 font-bold uppercase tracking-[0.2em] leading-loose">
+              В разработке ✨
+            </p>
           </div>
         )}
 
@@ -1521,40 +1546,75 @@ const AppContent: React.FC = () => {
                 <AccordionHeader 
                   isOpen={isAffiliateExpanded} 
                   onToggle={() => setIsAffiliateExpanded(!isAffiliateExpanded)} 
-                  icon={<HeartHandshake size={18} />} 
+                  icon={<HeartHandshake size={18} className="text-lime-500" />} 
                   title="Дарите релакс" 
-                  subtitle="Зарабатывайте баллы" 
+                  subtitle="Партнерская программа" 
                 />
                 {isAffiliateExpanded && (
                   <div className="p-5 space-y-6 animate-fadeIn border-t border-gray-50 bg-white">
-                    <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-[28px] p-6 text-white relative overflow-hidden shadow-xl">
-                       <h4 className="text-[12px] font-black uppercase tracking-widest mb-4 opacity-90">Твоя ссылка</h4>
-                       <div className="flex items-center gap-2 bg-white/10 backdrop-blur-md rounded-2xl p-2 pl-4 border border-white/20">
-                          <span className="truncate text-[9px] font-mono flex-1 opacity-80">{referralLink}</span>
-                          <button onClick={copyToClipboard} className={`p-3 rounded-xl transition-all ${copySuccess ? 'bg-green-500' : 'bg-white text-indigo-600 shadow-md active:scale-90'}`}>{copySuccess ? <Check size={16} /> : <Copy size={16} />}</button>
-                       </div>
+                    <div className="bg-lime-50/50 rounded-[24px] p-5 border border-lime-100/50">
+                      <p className="text-[10px] font-bold text-gray-500 leading-relaxed uppercase tracking-wider">
+                        Приглашайте друзей и получайте бонусы с их заказов!
+                      </p>
                     </div>
-                    <div className="grid grid-cols-1 gap-3">
-                       {affiliateStats.levels.map(level => (
-                         <div key={level.id} className="bg-gray-50/50 rounded-2xl p-4 flex items-center justify-between border border-gray-100 group">
-                            <div className="flex items-center gap-4">
-                               <div className="w-9 h-9 bg-white text-indigo-400 rounded-xl flex items-center justify-center shadow-sm">{level.icon}</div>
-                               <div><p className="text-[11px] font-black uppercase">{level.name}</p><p className="text-[8px] text-gray-400 font-bold uppercase tracking-widest">{level.count} друзей</p></div>
-                            </div>
-                            <div className="text-right"><p className="text-[12px] font-black text-indigo-600">+{level.percent}%</p><p className="text-[7px] text-gray-400 font-bold uppercase">с чека</p></div>
-                         </div>
-                       ))}
-                    </div>
-                    <button 
-                      onClick={() => {
-                        fetchReferrals();
-                        setIsReferralsModalOpen(true);
-                      }}
-                      className="w-full py-4 rounded-2xl bg-indigo-50 text-indigo-600 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all"
-                    >
-                      <Users size={16} />
-                      Список приглашенных
-                    </button>
+                    
+                    {currentUser?.partnerStatus === 'approved' ? (
+                      <div className="space-y-4">
+                        <div className="bg-gradient-to-br from-lime-400 to-green-500 rounded-[28px] p-6 text-white relative overflow-hidden shadow-xl">
+                           <h4 className="text-[12px] font-black uppercase tracking-widest mb-4 opacity-90">Ваша ссылка</h4>
+                           <div className="flex items-center gap-2 bg-white/10 backdrop-blur-md rounded-2xl p-2 pl-4 border border-white/20">
+                              <span className="truncate text-[9px] font-mono flex-1 opacity-80">{`${window.location.origin}?ref=${currentUser?.id}`}</span>
+                              <button 
+                                onClick={() => {
+                                  navigator.clipboard.writeText(`${window.location.origin}?ref=${currentUser?.id}`);
+                                  showNotification('Ссылка скопирована!');
+                                }} 
+                                className="p-3 bg-white text-lime-600 rounded-xl shadow-md active:scale-90 transition-all"
+                              >
+                                <Copy size={16} />
+                              </button>
+                           </div>
+                        </div>
+                        <button 
+                          onClick={() => {
+                            fetchReferrals();
+                            setIsReferralsModalOpen(true);
+                          }}
+                          className="w-full py-4 rounded-2xl bg-gray-900 text-white font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all"
+                        >
+                          <Users size={16} className="text-lime-500" />
+                          Список приглашенных
+                        </button>
+                      </div>
+                    ) : currentUser?.partnerStatus === 'pending' ? (
+                      <div className="w-full bg-amber-50 text-amber-600 font-black py-5 rounded-2xl border border-amber-100 uppercase text-[10px] tracking-widest flex flex-col items-center justify-center gap-2">
+                        <Clock size={20} />
+                        <span>Заявка на проверке</span>
+                        <p className="text-[8px] font-bold text-amber-500/70 normal-case tracking-normal px-6 text-center">Мы проверяем вашу соц. сеть. Это займет немного времени.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                          <h5 className="text-[10px] font-black text-gray-900 uppercase tracking-widest mb-2">Условия участия:</h5>
+                          <ul className="space-y-2">
+                            <li className="flex items-start gap-2 text-[9px] font-bold text-gray-500 uppercase tracking-tight">
+                              <Check size={12} className="text-green-500 mt-0.5" />
+                              Более 1.000 подписчиков
+                            </li>
+                            <li className="flex items-start gap-2 text-[9px] font-bold text-gray-500 uppercase tracking-tight">
+                              <Check size={12} className="text-green-500 mt-0.5" />
+                              Ссылка на соц. сеть
+                            </li>
+                          </ul>
+                        </div>
+                        <button 
+                          onClick={() => setIsPartnerApplyOpen(true)}
+                          className="w-full bg-[#5D5FEF] text-white font-black py-4 rounded-2xl shadow-lg shadow-purple-100 uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all"
+                        >
+                          <Award size={16} /> Стать партнером
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1624,20 +1684,32 @@ const AppContent: React.FC = () => {
       </main>
 
       {/* Shared Modals */}
-      {selectedProduct && (
-        <div className="fixed inset-0 z-50 bg-white overflow-y-auto animate-fadeIn flex flex-col font-['Montserrat'] max-w-md mx-auto shadow-2xl">
-           {/* Header Image Area with Carousel */}
-           <div className="relative h-[60vh] shrink-0 overflow-hidden bg-gray-100">
-             <AnimatePresence initial={false} mode="wait">
-               <motion.img
-                 key={currentImageIndex}
-                 src={[selectedProduct.image, ...(selectedProduct.images || [])].filter(Boolean)[currentImageIndex] || undefined}
-                 alt={selectedProduct.name}
-                 initial={{ opacity: 0, x: 100 }}
-                 animate={{ opacity: 1, x: 0 }}
-                 exit={{ opacity: 0, x: -100 }}
-                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                 className="w-full h-full object-cover"
+      <AnimatePresence>
+        {selectedProduct && (
+          <motion.div 
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: "spring", damping: 30, stiffness: 150, mass: 0.8 }}
+            drag="x"
+            dragDirectionLock
+            dragConstraints={{ right: 0 }}
+            dragElastic={{ left: 0.5, right: 0.1 }}
+            onDragEnd={(_, info) => {
+              if (info.offset.x < -100) {
+                setSelectedProduct(null);
+                setSelectedWeightIndex(0);
+                setCurrentImageIndex(0);
+              }
+            }}
+            className="fixed inset-0 z-50 bg-white overflow-y-auto no-scrollbar flex flex-col font-['Montserrat'] max-w-md mx-auto shadow-2xl"
+          >
+             {/* Header Image Area with Carousel */}
+             <div className="relative h-[60vh] shrink-0 overflow-hidden bg-gray-100">
+               <motion.div 
+                 className="flex h-full touch-pan-y"
+                 animate={{ x: `-${currentImageIndex * 100}%` }}
+                 transition={{ type: "spring", stiffness: 200, damping: 30, mass: 0.8 }}
                  drag="x"
                  dragConstraints={{ left: 0, right: 0 }}
                  dragElastic={0.2}
@@ -1645,47 +1717,47 @@ const AppContent: React.FC = () => {
                    const images = [selectedProduct.image, ...(selectedProduct.images || [])].filter(Boolean);
                    if (images.length <= 1) return;
                    
-                   if (info.offset.x < -50) {
-                     setCurrentImageIndex((prev) => (prev + 1) % images.length);
-                   } else if (info.offset.x > 50) {
-                     setCurrentImageIndex((prev) => (prev - 1 + images.length) % images.length);
+                   if (info.offset.x < -50 && currentImageIndex < images.length - 1) {
+                     setCurrentImageIndex(prev => prev + 1);
+                   } else if (info.offset.x > 50 && currentImageIndex > 0) {
+                     setCurrentImageIndex(prev => prev - 1);
                    }
                  }}
-               />
-             </AnimatePresence>
-             
-             <div className="absolute inset-0 bg-gradient-to-b from-black/10 to-transparent pointer-events-none" />
-             
-             {/* Carousel Indicators */}
-             {[selectedProduct.image, ...(selectedProduct.images || [])].filter(Boolean).length > 1 && (
-               <div className="absolute bottom-16 left-0 right-0 flex justify-center gap-1.5 z-10">
-                 {[selectedProduct.image, ...(selectedProduct.images || [])].filter(Boolean).map((_, idx) => (
-                   <div 
-                     key={idx} 
-                     className={`h-1 rounded-full transition-all duration-300 ${
-                       currentImageIndex === idx ? 'w-6 bg-white' : 'w-2 bg-white/40'
-                     }`}
-                   />
+               >
+                 {[selectedProduct.image, ...(selectedProduct.images || [])].filter(Boolean).map((img, idx) => (
+                   <div key={idx} className="w-full h-full shrink-0 border-r border-white/10 last:border-r-0">
+                     <img 
+                       src={img} 
+                       alt={`${selectedProduct.name} ${idx + 1}`}
+                       className="w-full h-full object-cover pointer-events-none" 
+                       referrerPolicy="no-referrer" 
+                     />
+                   </div>
                  ))}
-               </div>
-             )}
-           </div>
+               </motion.div>
+               
+               <div className="absolute inset-0 bg-gradient-to-b from-black/10 to-transparent pointer-events-none" />
+               
+               {/* Carousel Indicators */}
+               {[selectedProduct.image, ...(selectedProduct.images || [])].filter(Boolean).length > 1 && (
+                 <div className="absolute bottom-16 left-0 right-0 flex justify-center gap-1.5 z-10">
+                   {[selectedProduct.image, ...(selectedProduct.images || [])].filter(Boolean).map((_, idx) => (
+                     <div 
+                       key={idx} 
+                       className={`h-1 rounded-full transition-all duration-300 ${
+                         currentImageIndex === idx ? 'w-6 bg-white' : 'w-2 bg-white/40'
+                       }`}
+                     />
+                   ))}
+                 </div>
+               )}
+             </div>
 
-           {/* Content Area */}
-           <motion.div 
-             className="flex-1 bg-white rounded-t-[48px] relative p-8 shadow-[0_-20px_40px_rgba(0,0,0,0.1)] space-y-6"
-             style={{ marginTop: '-48px' }}
-             drag="x"
-             dragConstraints={{ left: 0, right: 0 }}
-             dragElastic={{ left: 0.8, right: 0.1 }}
-             onDragEnd={(_, info) => {
-               if (info.offset.x < -100) {
-                 setSelectedProduct(null);
-                 setSelectedWeightIndex(0);
-                 setCurrentImageIndex(0);
-               }
-             }}
-           >
+             {/* Content Area */}
+             <div 
+               className="flex-1 bg-white rounded-t-[48px] relative p-8 shadow-[0_-20px_40px_rgba(0,0,0,0.1)] space-y-6"
+               style={{ marginTop: '-48px' }}
+             >
              <div className="flex justify-between items-start">
                <h3 
                  className="font-black text-gray-900 uppercase tracking-tight leading-tight max-w-[80%] text-xl truncate"
@@ -1782,9 +1854,10 @@ const AppContent: React.FC = () => {
                  В корзину
                </button>
              </div>
-           </motion.div>
-        </div>
-      )}
+           </div>
+         </motion.div>
+       )}
+     </AnimatePresence>
 
       {/* Composition Bottom Sheet */}
       {isCompositionOpen && selectedProduct && (
@@ -2289,7 +2362,7 @@ const AppContent: React.FC = () => {
                    <input type="tel" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="+7 (999) 000-00-00" className="w-full bg-gray-50 border border-gray-100 rounded-[20px] px-5 py-4 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-100 transition-all" />
                 </div>
              </div>
-             <button onClick={handleSaveProfile} className="w-full mt-10 bg-gray-900 text-white font-black py-5 rounded-[24px] shadow-2xl uppercase text-xs tracking-widest">Сохранить</button>
+             <button onClick={() => { setIsEditingProfile(false); setActiveTab('profile'); handleSaveProfile(); }} className="w-full mt-10 bg-gray-900 text-white font-black py-5 rounded-[24px] shadow-2xl uppercase text-xs tracking-widest">Сохранить</button>
           </div>
         </div>
       )}
@@ -2315,42 +2388,127 @@ const AppContent: React.FC = () => {
         </button>
       </nav>
 
+      {/* Partner Apply Modal */}
+      {isPartnerApplyOpen && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white w-full max-w-md rounded-[48px] p-8 animate-slideUp relative shadow-2xl pb-10">
+             <header className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-3">
+                   <div className="w-10 h-10 bg-gray-900 rounded-2xl flex items-center justify-center text-white"><Award size={18} /></div>
+                   <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">Стать партнером</h3>
+                </div>
+                <button onClick={() => setIsPartnerApplyOpen(false)} className="p-2.5 bg-gray-50 rounded-full hover:bg-gray-100 transition-colors"><X size={20} /></button>
+             </header>
+             
+             <div className="space-y-6">
+                <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
+                  <p className="text-[10px] font-bold text-blue-700 leading-relaxed uppercase tracking-wider">
+                    Условие: более 1.000 подписчиков в одной из соц. сетей.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                   <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Ссылка на соц. сеть</label>
+                   <input 
+                    type="text" 
+                    value={partnerSocialLink} 
+                    onChange={(e) => setPartnerSocialLink(e.target.value)} 
+                    placeholder="https://instagram.com/yourname" 
+                    className="w-full bg-gray-50 border border-gray-100 rounded-[20px] px-5 py-4 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all" 
+                   />
+                </div>
+                
+                <div className="space-y-1.5">
+                   <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Количество подписчиков</label>
+                   <input 
+                    type="number" 
+                    value={partnerFollowers} 
+                    onChange={(e) => setPartnerFollowers(e.target.value)} 
+                    placeholder="10500" 
+                    className="w-full bg-gray-50 border border-gray-100 rounded-[20px] px-5 py-4 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all" 
+                   />
+                </div>
+             </div>
+
+             <button 
+              onClick={handlePartnerApply}
+              disabled={isApplying || !partnerSocialLink || !partnerFollowers}
+              className="w-full mt-10 bg-gray-900 text-white font-black py-5 rounded-[24px] shadow-2xl uppercase text-xs tracking-widest disabled:opacity-50 flex items-center justify-center gap-2"
+             >
+               {isApplying ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Отправить заявку'}
+             </button>
+          </div>
+        </div>
+      )}
+
       {/* Referrals Modal */}
       {isReferralsModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center p-0 sm:p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fadeIn max-w-md mx-auto" onClick={() => setIsReferralsModalOpen(false)} />
-          <div className="relative w-full max-w-md bg-white rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden animate-slideUp flex flex-col max-h-[80vh]">
-            <div className="p-6 border-b border-gray-50 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">Приглашенные</h3>
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{referrals.length} человек</p>
-              </div>
+          <div className="bg-white w-full max-w-sm rounded-[48px] p-8 animate-slideUp relative shadow-2xl overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-lime-50 rounded-full -mr-16 -mt-16 blur-3xl opacity-50" />
+            
+            <header className="flex items-center justify-between mb-8 relative z-10">
+              <h3 className="text-xl font-black text-gray-900 uppercase tracking-tight">Партнерка</h3>
               <button onClick={() => setIsReferralsModalOpen(false)} className="w-10 h-10 bg-gray-50 rounded-full flex items-center justify-center text-gray-400 active:scale-90 transition-all"><X size={20} /></button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-hide">
-              {referrals.length > 0 ? referrals.map(ref => (
-                <div key={ref.id} className="flex items-center justify-between p-4 bg-gray-50/50 rounded-2xl border border-gray-100">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-sm">
-                      <img src={ref.photo || undefined} alt={ref.name} className="w-full h-full object-cover" />
-                    </div>
-                    <div>
-                      <p className="text-[11px] font-black text-gray-900 uppercase">{ref.name}</p>
-                      <p className="text-[8px] text-gray-400 font-bold uppercase tracking-widest">В клубе с {ref.createdAt}</p>
-                    </div>
+            </header>
+
+            <div className="space-y-6 relative z-10">
+              <div className="p-6 bg-gray-50 rounded-[32px] border border-gray-100 text-center">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-3">Ваша ссылка</p>
+                <div className="flex items-center gap-2 bg-white p-3 rounded-2xl border border-gray-100 shadow-sm">
+                  <code className="flex-1 text-[10px] font-bold text-lime-500 truncate">
+                    {`${window.location.origin}?ref=${currentUser?.id}`}
+                  </code>
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}?ref=${currentUser?.id}`);
+                      showNotification('Ссылка скопирована!');
+                    }}
+                    className="p-2 bg-lime-50 text-lime-500 rounded-xl active:scale-90 transition-all"
+                  >
+                    <Copy size={16} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="text-[10px] font-black text-gray-900 uppercase tracking-widest flex items-center gap-2">
+                  <Target size={16} className="text-blue-500" /> Условия
+                </h4>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 p-3 bg-blue-50/50 rounded-2xl border border-blue-100/50">
+                    <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center text-blue-500 font-black text-xs shadow-sm">10%</div>
+                    <span className="text-[9px] font-bold text-gray-600 uppercase tracking-tight">С первого заказа друга</span>
                   </div>
-                  <div className="text-right">
-                    <p className="text-[10px] font-black text-indigo-600">{ref.orderCount} заказов</p>
+                  <div className="flex items-center gap-3 p-3 bg-green-50/50 rounded-2xl border border-green-100/50">
+                    <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center text-green-500 font-black text-xs shadow-sm">5%</div>
+                    <span className="text-[9px] font-bold text-gray-600 uppercase tracking-tight">Со всех последующих заказов</span>
                   </div>
                 </div>
-              )) : (
-                <div className="text-center py-12">
-                  <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-300">
-                    <Users size={32} />
-                  </div>
-                  <p className="text-sm text-gray-400 font-medium">У вас пока нет приглашенных друзей</p>
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="text-[10px] font-black text-gray-900 uppercase tracking-widest flex items-center gap-2">
+                  <Users size={16} className="text-purple-500" /> Приглашенные ({referrals.length})
+                </h4>
+                <div className="max-h-[200px] overflow-y-auto space-y-2 pr-2 custom-scrollbar no-scrollbar">
+                  {referrals.length > 0 ? referrals.map((ref: any) => (
+                    <div key={ref.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl border border-gray-100">
+                      <div className="flex items-center gap-3">
+                        <img src={ref.photo || undefined} className="w-8 h-8 rounded-xl object-cover" alt="" />
+                        <div>
+                          <p className="text-[10px] font-black text-gray-900 uppercase tracking-tight">{ref.fullName}</p>
+                          <p className="text-[8px] font-bold text-gray-400 uppercase">{ref.createdAt}</p>
+                        </div>
+                      </div>
+                      <div className="text-[10px] font-black text-pink-500">+{ref.orderCount || 0} зак.</div>
+                    </div>
+                  )) : (
+                    <p className="text-[10px] text-center text-gray-300 py-4 uppercase font-bold tracking-widest">Пока никого нет</p>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
           </div>
         </div>
@@ -2395,6 +2553,26 @@ const AppContent: React.FC = () => {
           display: none !important;
         }
       `}</style>
+
+      <AnimatePresence>
+        {notification && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[100] w-max max-w-[90%]"
+          >
+            <div className={`px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 backdrop-blur-md border ${
+              notification.type === 'error' 
+                ? 'bg-red-500/90 border-red-400 text-white' 
+                : 'bg-gray-900/90 border-gray-800 text-white'
+            }`}>
+              {notification.type === 'error' ? <AlertCircle size={18} /> : <Check size={18} className="text-green-400" />}
+              <span className="text-[10px] font-black uppercase tracking-widest">{notification.message}</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

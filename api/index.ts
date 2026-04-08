@@ -77,8 +77,8 @@ try {
       name: "session",
       keys: [process.env.SESSION_SECRET || "default-secret-key"],
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
-      secure: true,
-      sameSite: "none",
+      secure: false, // Set to false to ensure cookies are sent even if proxy detection fails
+      sameSite: "lax",
       proxy: true,
     })
   );
@@ -86,6 +86,14 @@ try {
 } catch (e) {
   console.error("Failed to initialize cookieSession:", e);
 }
+
+// Request Logger for debugging session issues
+app.use((req, res, next) => {
+  if (req.url.startsWith('/api/')) {
+    console.log(`[${req.method}] ${req.url} - Session User:`, req.session?.user?.id || 'none');
+  }
+  next();
+});
 
 // Error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -201,7 +209,7 @@ app.get("/api/products", async (req, res) => {
 // Public API: Create Order
 app.post("/api/orders", async (req, res) => {
   const user = req.session?.user;
-  const { total, bonusUsed = 0 } = req.body;
+  const { total, bonusUsed = 0, itemsTotal = 0 } = req.body;
   
   const orderId = Math.floor(Math.random() * 90000 + 10000).toString();
   const order = {
@@ -242,9 +250,9 @@ app.post("/api/orders", async (req, res) => {
       }
     }
 
-    // Cashback Logic
+    // Cashback Logic (3% from itemsTotal)
     if (user) {
-      const cashback = Math.round(order.total * 0.05);
+      const cashback = Math.round(itemsTotal * 0.03);
       if (cashback > 0) {
         const userRef = db.collection("users").doc(user.id);
         const userDoc = await userRef.get();
@@ -272,38 +280,40 @@ app.post("/api/orders", async (req, res) => {
       }
     }
 
-    // Referral Bonus Logic
+    // Referral Bonus Logic (New Partner Program)
     if (user && user.invitedBy) {
-      const awardBonus = async (inviterId: string, amount: number, level: number, buyerName: string) => {
-        const inviterRef = db.collection("users").doc(inviterId);
-        const inviterDoc = await inviterRef.get();
-        if (inviterDoc.exists) {
-          const inviterData = inviterDoc.data()!;
-          const newBalance = (inviterData.bonusBalance || 0) + amount;
-          await inviterRef.update({ bonusBalance: newBalance });
+      const inviterId = user.invitedBy;
+      const inviterRef = db.collection("users").doc(inviterId);
+      const inviterDoc = await inviterRef.get();
+      
+      if (inviterDoc.exists) {
+        const inviterData = inviterDoc.data()!;
+        
+        // Only give bonuses if the inviter is an approved partner
+        if (inviterData.partnerStatus === 'approved') {
+          // Check if this is the user's first order
+          const userOrdersSnapshot = await db.collection("orders").where("userId", "==", user.id).get();
+          const isFirstOrder = userOrdersSnapshot.size <= 1; // Current order is already saved
           
-          const transactionId = Date.now().toString() + Math.random();
-          await db.collection("bonusHistory").doc(transactionId).set({
-            id: transactionId,
-            userId: inviterId,
-            type: 'referral',
-            amount,
-            description: `Бонус за заказ ${buyerName} (L${level})`,
-            date: new Date().toLocaleDateString('ru-RU')
-          });
-          return inviterData.invitedBy;
+          const rewardPercent = isFirstOrder ? 0.10 : 0.05;
+          const rewardAmount = Math.round(itemsTotal * rewardPercent);
+          
+          if (rewardAmount > 0) {
+            const newBalance = (inviterData.bonusBalance || 0) + rewardAmount;
+            await inviterRef.update({ bonusBalance: newBalance });
+            
+            const transactionId = Date.now().toString() + Math.random();
+            await db.collection("bonusHistory").doc(transactionId).set({
+              id: transactionId,
+              userId: inviterId,
+              type: 'referral',
+              amount: rewardAmount,
+              description: `Партнерское вознаграждение (${isFirstOrder ? '10%' : '5%'}) за заказ ${user.fullName}`,
+              date: new Date().toLocaleDateString('ru-RU')
+            });
+          }
         }
-        return null;
-      };
-
-      const l1Bonus = Math.round(order.total * 0.1);
-      const l2Bonus = Math.round(order.total * 0.05);
-      const l3Bonus = Math.round(order.total * 0.02);
-
-      const l1InviterId = user.invitedBy;
-      const l2InviterId = l1InviterId ? await awardBonus(l1InviterId, l1Bonus, 1, user.fullName) : null;
-      const l3InviterId = l2InviterId ? await awardBonus(l2InviterId, l2Bonus, 2, user.fullName) : null;
-      if (l3InviterId) await awardBonus(l3InviterId, l3Bonus, 3, user.fullName);
+      }
     }
 
     res.json(order);
@@ -602,6 +612,9 @@ app.post("/api/auth/vkid", async (req, res) => {
         orderCount: 0,
         bonusBalance: 0,
         invitedBy: invitedBy || null,
+        partnerStatus: 'none',
+        partnerSocialLink: '',
+        partnerFollowersCount: 0,
         createdAt: new Date().toLocaleDateString('ru-RU')
       };
       await userRef.set(existingUser);
@@ -611,20 +624,7 @@ app.post("/api/auth/vkid", async (req, res) => {
         const inviterRef = db.collection("users").doc(invitedBy);
         const inviterDoc = await inviterRef.get();
         if (inviterDoc.exists) {
-          const inviterData = inviterDoc.data()!;
-          const bonusAmount = 100; // Registration bonus
-          const newBalance = (inviterData.bonusBalance || 0) + bonusAmount;
-          await inviterRef.update({ bonusBalance: newBalance });
-          
-          const transactionId = Date.now().toString() + Math.random();
-          await db.collection("bonusHistory").doc(transactionId).set({
-            id: transactionId,
-            userId: invitedBy,
-            type: 'referral',
-            amount: bonusAmount,
-            description: `Бонус за регистрацию друга: ${existingUser.name}`,
-            date: new Date().toLocaleDateString('ru-RU')
-          });
+          // Welcome bonus removed as per user request
         }
       }
     }
@@ -664,6 +664,79 @@ app.patch("/api/auth/profile", async (req, res) => {
 app.post("/api/auth/logout", (req, res) => {
   req.session = null;
   res.json({ success: true });
+});
+
+// Partner Application
+app.post("/api/partner/apply", async (req, res) => {
+  const user = req.session?.user;
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+
+  const { socialLink, followersCount } = req.body;
+  if (!socialLink || !followersCount) {
+    return res.status(400).json({ error: "Missing socialLink or followersCount" });
+  }
+
+  try {
+    console.log("Partner application request from user:", user.id);
+    const userRef = db.collection("users").doc(user.id);
+    
+    // Check if user exists first
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) {
+      console.error("User document not found in Firestore:", user.id);
+      return res.status(404).json({ error: "User profile not found. Please try logging in again." });
+    }
+
+    const updateData = {
+      partnerStatus: 'pending',
+      partnerSocialLink: socialLink,
+      partnerFollowersCount: Number(followersCount)
+    };
+    
+    console.log("Updating user with partner data:", updateData);
+    await userRef.set(updateData, { merge: true });
+    
+    // Update session
+    const updatedUser = { ...user, ...updateData };
+    req.session!.user = updatedUser;
+    
+    console.log("Partner application successful for:", user.id);
+    res.json({ success: true, user: updatedUser });
+  } catch (error: any) {
+    console.error("Error applying for partner:", error);
+    res.status(500).json({ error: "Failed to apply: " + error.message });
+  }
+});
+
+// Admin: Get Partner Applications
+app.get("/api/admin/partner/applications", async (req, res) => {
+  try {
+    const querySnapshot = await db.collection("users").where("partnerStatus", "==", "pending").get();
+    const applications = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    res.json(applications);
+  } catch (error) {
+    console.error("Error fetching applications:", error);
+    res.status(500).json({ error: "Failed to fetch applications" });
+  }
+});
+
+// Admin: Approve/Reject Partner
+app.patch("/api/admin/partner/:id", async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body; // 'approved' or 'rejected'
+  
+  if (!['approved', 'rejected'].includes(status)) {
+    return res.status(400).json({ error: "Invalid status" });
+  }
+
+  try {
+    const userRef = db.collection("users").doc(id);
+    await userRef.update({ partnerStatus: status });
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error updating partner status:", error);
+    res.status(500).json({ error: "Failed to update status" });
+  }
 });
 
 // Mock Login (Temporary bypass)
