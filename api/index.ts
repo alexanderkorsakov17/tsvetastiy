@@ -250,76 +250,120 @@ app.post("/api/orders", async (req, res) => {
       }
     }
 
-    // Cashback Logic (3% from itemsTotal)
-    if (user) {
-      const cashback = Math.round(itemsTotal * 0.03);
-      if (cashback > 0) {
-        const userRef = db.collection("users").doc(user.id);
-        const userDoc = await userRef.get();
-        if (userDoc.exists) {
-          const userData = userDoc.data()!;
-          const newBalance = (userData.bonusBalance || 0) + cashback;
-          await userRef.update({ 
-            bonusBalance: newBalance,
-            orderCount: (userData.orderCount || 0) + 1
-          });
-          
-          const transactionId = Date.now().toString() + Math.random();
-          await db.collection("bonusHistory").doc(transactionId).set({
-            id: transactionId,
-            userId: user.id,
-            type: 'earn',
-            amount: cashback,
-            description: `Кэшбэк за заказ #${orderId}`,
-            date: new Date().toLocaleDateString('ru-RU')
-          });
-          
-          // Update session user
-          req.session!.user = { ...userData, bonusBalance: newBalance, orderCount: (userData.orderCount || 0) + 1 };
-        }
-      }
+    // Referral Bonus Logic removed from here - moved to order completion (received status)
+    
+    res.json(order);
+  } catch (error) {
+    console.error("Error creating order:", error);
+    res.status(500).json({ error: "Failed to create order" });
+  }
+});
+
+// Helper to award bonuses on order completion
+async function awardOrderBonuses(orderId: string) {
+  const db = getFirestore();
+  const orderRef = db.collection("orders").doc(orderId);
+  const orderDoc = await orderRef.get();
+  
+  if (!orderDoc.exists) return;
+  const orderData = orderDoc.data()!;
+  
+  if (orderData.bonusesAwarded) return;
+  
+  const { userId, itemsTotal, deliveryFee = 0 } = orderData;
+  const userRef = db.collection("users").doc(userId);
+  const userDoc = await userRef.get();
+  
+  if (userDoc.exists) {
+    const userData = userDoc.data()!;
+    const totalForBonuses = itemsTotal + deliveryFee;
+    
+    // 1. Cashback (3%)
+    const cashback = Math.round(totalForBonuses * 0.03);
+    if (cashback > 0) {
+      const newBalance = (userData.bonusBalance || 0) + cashback;
+      await userRef.update({ 
+        bonusBalance: newBalance,
+        orderCount: (userData.orderCount || 0) + 1
+      });
+      
+      const transactionId = Date.now().toString() + Math.random();
+      await db.collection("bonusHistory").doc(transactionId).set({
+        id: transactionId,
+        userId: userId,
+        type: 'earn',
+        amount: cashback,
+        description: `Кэшбэк за заказ #${orderId}`,
+        date: new Date().toLocaleDateString('ru-RU')
+      });
     }
 
-    // Referral Bonus Logic (New Partner Program)
-    if (user && user.invitedBy) {
-      const inviterId = user.invitedBy;
+    // 2. Referral Bonus
+    if (userData.invitedBy) {
+      const inviterId = userData.invitedBy;
       const inviterRef = db.collection("users").doc(inviterId);
       const inviterDoc = await inviterRef.get();
       
       if (inviterDoc.exists) {
         const inviterData = inviterDoc.data()!;
-        
-        // Only give bonuses if the inviter is an approved partner
         if (inviterData.partnerStatus === 'approved') {
-          // Check if this is the user's first order
-          const userOrdersSnapshot = await db.collection("orders").where("userId", "==", user.id).get();
-          const isFirstOrder = userOrdersSnapshot.size <= 1; // Current order is already saved
+          const userOrdersSnapshot = await db.collection("orders").where("userId", "==", userId).get();
+          const isFirstOrder = userOrdersSnapshot.docs.filter(d => d.data().bonusesAwarded).length === 0;
           
           const rewardPercent = isFirstOrder ? 0.10 : 0.05;
-          const rewardAmount = Math.round(itemsTotal * rewardPercent);
+          const rewardAmount = Math.round(totalForBonuses * rewardPercent);
           
           if (rewardAmount > 0) {
-            const newBalance = (inviterData.bonusBalance || 0) + rewardAmount;
-            await inviterRef.update({ bonusBalance: newBalance });
+            const newInviterBalance = (inviterData.bonusBalance || 0) + rewardAmount;
+            await inviterRef.update({ bonusBalance: newInviterBalance });
             
-            const transactionId = Date.now().toString() + Math.random();
-            await db.collection("bonusHistory").doc(transactionId).set({
-              id: transactionId,
+            const inviterTransactionId = Date.now().toString() + Math.random();
+            await db.collection("bonusHistory").doc(inviterTransactionId).set({
+              id: inviterTransactionId,
               userId: inviterId,
               type: 'referral',
               amount: rewardAmount,
-              description: `Партнерское вознаграждение (${isFirstOrder ? '10%' : '5%'}) за заказ ${user.fullName}`,
+              description: `Партнерское вознаграждение (${isFirstOrder ? '10%' : '5%'}) за заказ ${userData.fullName || userData.name}`,
               date: new Date().toLocaleDateString('ru-RU')
             });
           }
         }
       }
     }
+  }
+  
+  await orderRef.update({ bonusesAwarded: true });
+}
 
-    res.json(order);
+// User API: Confirm Receipt
+app.post("/api/orders/:id/receive", async (req, res) => {
+  const { id } = req.params;
+  const user = req.session!.user;
+  
+  if (!user) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  
+  try {
+    const orderRef = db.collection("orders").doc(id);
+    const orderDoc = await orderRef.get();
+    
+    if (!orderDoc.exists || orderDoc.data()!.userId !== user.id) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+    
+    await orderRef.update({ status: 'received' });
+    await awardOrderBonuses(id);
+    
+    // Update session user balance
+    const userRef = db.collection("users").doc(user.id);
+    const updatedUserDoc = await userRef.get();
+    req.session!.user = updatedUserDoc.data();
+    
+    res.json({ success: true, user: req.session!.user });
   } catch (error) {
-    console.error("Error creating order:", error);
-    res.status(500).json({ error: "Failed to create order" });
+    console.error("Error confirming receipt:", error);
+    res.status(500).json({ error: "Failed to confirm receipt" });
   }
 });
 
@@ -358,6 +402,11 @@ app.patch("/api/admin/orders/:id", async (req, res) => {
   try {
     const orderRef = db.collection("orders").doc(id);
     await orderRef.update({ status });
+    
+    if (status === 'received') {
+      await awardOrderBonuses(id);
+    }
+    
     const updatedDoc = await orderRef.get();
     res.json(updatedDoc.data());
   } catch (error) {

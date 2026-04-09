@@ -1,5 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
+import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
 import * as VKID from '@vkid/sdk';
 import { createPortal } from 'react-dom';
@@ -1162,9 +1163,10 @@ const AppContent: React.FC = () => {
                           (citySearch.toLowerCase().includes('курск') || deliveryAddress.toLowerCase().includes('курск'));
   const deliveryFee = (cartTotal >= MIN_ORDER_FREE_DELIVERY || isZheleznogorsk) ? 0 : PAID_DELIVERY_FEE;
   
-  const maxBonusAllowed = Math.floor(cartTotal * 0.99);
+  const maxBonusAllowed = Math.floor((cartTotal + deliveryFee) * 0.30);
   const bonusToApply = useBonuses ? Math.min(bonusToSpend, maxBonusAllowed, currentUser?.bonusBalance || 0) : 0;
   const finalTotal = cartTotal + deliveryFee - bonusToApply;
+  const estimatedCashback = Math.round((cartTotal + deliveryFee) * 0.03);
 
   const refreshUser = async () => {
     try {
@@ -1195,8 +1197,20 @@ const AppContent: React.FC = () => {
     setIsAiLoading(false);
   };
 
-  const confirmReceipt = (orderId: string) => {
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'received', deliveryNote: undefined } : o));
+  const confirmReceipt = async (orderId: string) => {
+    try {
+      const response = await axios.post(`/api/orders/${orderId}/receive`);
+      if (response.data.success) {
+        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'received', deliveryNote: undefined } : o));
+        if (response.data.user) {
+          setCurrentUser(response.data.user);
+        }
+        showNotification('Заказ получен! Кэшбэк начислен.');
+      }
+    } catch (error) {
+      console.error("Error confirming receipt:", error);
+      showNotification('Ошибка при подтверждении получения');
+    }
   };
 
   const copyToClipboard = () => {
@@ -1240,6 +1254,7 @@ const AppContent: React.FC = () => {
     const newOrderData = {
       total: finalTotal,
       itemsTotal: cartTotal,
+      deliveryFee: deliveryFee,
       bonusUsed: bonusToApply,
       items: cart.map(i => i.selectedWeight ? `${i.name} (${i.selectedWeight.label})` : i.name),
       deliveryAddress: `${citySearch}, ${deliveryAddress}`,
@@ -1440,7 +1455,7 @@ const AppContent: React.FC = () => {
           <div className="animate-fadeIn px-4 py-4">
             <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
               {categories.map(cat => (
-                <button key={cat} onClick={() => setSelectedCategory(cat)} className={`shrink-0 px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${selectedCategory === cat ? 'bg-pink-500 text-white shadow-lg shadow-pink-100' : 'bg-gray-50 text-gray-400'}`}>{cat}</button>
+                <button key={cat} onClick={() => setSelectedCategory(cat)} className={`shrink-0 px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${selectedCategory === cat ? 'bg-pink-500 text-white shadow-md shadow-pink-500/20' : isDarkMode ? 'bg-white/5 text-gray-400' : 'bg-gray-50 text-gray-400'}`}>{cat}</button>
               ))}
             </div>
             <div className="grid grid-cols-2 gap-4 mt-3">
@@ -1453,7 +1468,7 @@ const AppContent: React.FC = () => {
                     <h3 className="text-[13px] font-bold text-gray-800 leading-tight line-clamp-1">{product.name}</h3>
                     <div className="flex items-center justify-between mt-2">
                       <span className="text-[15px] font-black text-pink-500">{product.price} ₽</span>
-                      <div onClick={(e) => { e.stopPropagation(); addToCart(product); }} className="w-8 h-8 bg-pink-500 rounded-full flex items-center justify-center text-white shadow-md active:scale-90 transition-all"><Plus size={16} /></div>
+                      <div onClick={(e) => { e.stopPropagation(); addToCart(product); }} className={`w-8 h-8 rounded-full flex items-center justify-center text-white shadow-md active:scale-90 transition-all ${isDarkMode ? 'bg-pink-500/80 shadow-none' : 'bg-pink-500 shadow-pink-500/10'}`}><Plus size={16} /></div>
                     </div>
                   </div>
                 </div>
@@ -1477,7 +1492,7 @@ const AppContent: React.FC = () => {
                 </button>
                 <button onClick={() => setIsEditingProfile(true)} className="p-2.5 bg-gray-50 rounded-xl text-gray-400 active:scale-90 transition-all"><Edit3 size={18} /></button>
                 {currentUser?.email === 'alexkors1703@gmail.com' && (
-                  <button onClick={() => setIsAdmin(true)} className="p-2.5 bg-gray-900 rounded-xl text-white active:scale-90 transition-all"><ShieldCheck size={18} /></button>
+                  <button onClick={() => setIsAdmin(true)} className={`p-2.5 rounded-xl text-white active:scale-90 transition-all ${isDarkMode ? 'bg-white/10' : 'bg-gray-900'}`}><ShieldCheck size={18} /></button>
                 )}
               </div>
             </div>
@@ -1533,7 +1548,7 @@ const AppContent: React.FC = () => {
                              <button onClick={() => confirmReceipt(order.id)} className="flex-1 bg-green-500 text-white font-black py-3 rounded-xl text-[9px] uppercase tracking-[0.1em] flex items-center justify-center gap-2 shadow-lg shadow-green-100 active:scale-95"><ThumbsUp size={14} /> Получил</button>
                            )}
                            {order.status === 'received' && (
-                             <button onClick={handleFeedbackRedirect} className="flex-1 bg-gray-900 text-white font-black py-3 rounded-xl text-[9px] uppercase tracking-[0.1em] flex items-center justify-center gap-2"><MessageSquare size={14} /> Отзыв</button>
+                             <button onClick={handleFeedbackRedirect} className={`flex-1 font-black py-3 rounded-xl text-[9px] uppercase tracking-[0.1em] flex items-center justify-center gap-2 ${isDarkMode ? 'bg-white/10 text-white' : 'bg-gray-900 text-white'}`}><MessageSquare size={14} /> Отзыв</button>
                            )}
                         </div>
                       </div>
@@ -1580,7 +1595,7 @@ const AppContent: React.FC = () => {
                             fetchReferrals();
                             setIsReferralsModalOpen(true);
                           }}
-                          className="w-full py-4 rounded-2xl bg-gray-900 text-white font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all"
+                          className={`w-full py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all ${isDarkMode ? 'bg-white/10 text-white' : 'bg-gray-900 text-white'}`}
                         >
                           <Users size={16} className="text-lime-500" />
                           Список приглашенных
@@ -1609,7 +1624,7 @@ const AppContent: React.FC = () => {
                         </div>
                         <button 
                           onClick={() => setIsPartnerApplyOpen(true)}
-                          className="w-full bg-[#5D5FEF] text-white font-black py-4 rounded-2xl shadow-lg shadow-purple-100 uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all"
+                          className={`w-full font-black py-4 rounded-2xl shadow-lg uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all ${isDarkMode ? 'bg-white/10 text-white shadow-none' : 'bg-[#5D5FEF] text-white shadow-purple-500/10'}`}
                         >
                           <Award size={16} /> Стать партнером
                         </button>
@@ -1849,7 +1864,7 @@ const AppContent: React.FC = () => {
                    setSelectedProduct(null);
                    setSelectedWeightIndex(0);
                  }}
-                 className="bg-[#0f172a] text-white px-10 py-4 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] shadow-xl shadow-gray-200 active:scale-95 transition-all"
+                  className={`px-10 py-4 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] shadow-xl active:scale-95 transition-all ${isDarkMode ? 'bg-white/10 text-white shadow-none' : 'bg-[#0f172a] text-white shadow-gray-200/50'}`}
                >
                  В корзину
                </button>
@@ -1956,7 +1971,7 @@ const AppContent: React.FC = () => {
                 </div>
                 <div className="flex justify-between items-end">
                    <div><p className="text-[9px] text-gray-400 uppercase font-black tracking-widest">Итого</p><p className="text-3xl font-black text-gray-900">{finalTotal} ₽</p></div>
-                   <button onClick={startCheckout} className="bg-gray-900 text-white font-black py-5 px-10 rounded-[24px] uppercase text-[10px] tracking-widest active:scale-95 shadow-2xl">Оформить</button>
+                   <button onClick={startCheckout} className={`font-black py-5 px-10 rounded-[24px] uppercase text-[10px] tracking-widest active:scale-95 shadow-2xl ${isDarkMode ? 'bg-white/10 text-white' : 'bg-gray-900 text-white'}`}>Оформить</button>
                 </div>
               </div>
             )}
@@ -2076,7 +2091,7 @@ const AppContent: React.FC = () => {
                     <div className="space-y-6 animate-fadeIn pb-10">
                        <header className="flex items-center justify-between px-2">
                           <div className="flex items-center gap-3">
-                             <div className="w-10 h-10 bg-pink-500 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-pink-200/50">
+                             <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-lg ${isDarkMode ? 'bg-pink-500/80 shadow-none' : 'bg-pink-500 shadow-pink-500/10'}`}>
                                 <Check size={20} />
                              </div>
                              <div>
@@ -2227,7 +2242,7 @@ const AppContent: React.FC = () => {
                                     </div>
                                     <div>
                                        <span className={`text-xs font-black uppercase tracking-widest block ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Бонусы</span>
-                                       <span className="text-[10px] text-amber-600 font-bold">Баланс: {currentUser?.bonusBalance}</span>
+                                       <span className="text-[10px] text-amber-600 font-bold">Баланс: {currentUser?.bonusBalance} (макс. скидка 30%)</span>
                                     </div>
                                  </div>
                                  <button 
@@ -2290,6 +2305,10 @@ const AppContent: React.FC = () => {
                                   <span>Доставка</span>
                                   <span>{deliveryFee} ₽</span>
                                </div>
+                               <div className="flex justify-between items-center text-xs font-bold text-green-400">
+                                  <span>Кэшбэк 3% (начислим после получения)</span>
+                                  <span>+{estimatedCashback} ₽</span>
+                               </div>
                                {useBonuses && bonusToSpend > 0 && (
                                  <div className="flex justify-between items-center text-xs font-bold text-amber-400">
                                     <span>Скидка бонусами</span>
@@ -2301,6 +2320,10 @@ const AppContent: React.FC = () => {
                                <div className="flex flex-col">
                                   <span className="text-[10px] font-black uppercase tracking-[0.2em] opacity-50 mb-1">Итого к оплате</span>
                                   <span className="text-2xl font-black tracking-tighter">{finalTotal} ₽</span>
+                                  <div className="mt-1 flex items-center gap-1.5 opacity-70">
+                                     <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                                     <span className="text-[9px] font-black uppercase tracking-widest">Кэшбэк 3%: +{estimatedCashback} ₽</span>
+                                  </div>
                                 </div>
                                <div className="w-10 h-10 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-md">
                                   <CreditCard size={20} />
@@ -2362,7 +2385,7 @@ const AppContent: React.FC = () => {
                    <input type="tel" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="+7 (999) 000-00-00" className="w-full bg-gray-50 border border-gray-100 rounded-[20px] px-5 py-4 text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-pink-100 transition-all" />
                 </div>
              </div>
-             <button onClick={() => { setIsEditingProfile(false); setActiveTab('profile'); handleSaveProfile(); }} className="w-full mt-10 bg-gray-900 text-white font-black py-5 rounded-[24px] shadow-2xl uppercase text-xs tracking-widest">Сохранить</button>
+             <button onClick={() => { setIsEditingProfile(false); setActiveTab('profile'); handleSaveProfile(); }} className={`w-full mt-10 font-black py-5 rounded-[24px] shadow-2xl uppercase text-xs tracking-widest ${isDarkMode ? 'bg-white/10 text-white' : 'bg-gray-900 text-white'}`}>Сохранить</button>
           </div>
         </div>
       )}
@@ -2433,7 +2456,7 @@ const AppContent: React.FC = () => {
              <button 
               onClick={handlePartnerApply}
               disabled={isApplying || !partnerSocialLink || !partnerFollowers}
-              className="w-full mt-10 bg-gray-900 text-white font-black py-5 rounded-[24px] shadow-2xl uppercase text-xs tracking-widest disabled:opacity-50 flex items-center justify-center gap-2"
+              className={`w-full mt-10 font-black py-5 rounded-[24px] shadow-2xl uppercase text-xs tracking-widest disabled:opacity-50 flex items-center justify-center gap-2 ${isDarkMode ? 'bg-white/10 text-white' : 'bg-gray-900 text-white'}`}
              >
                {isApplying ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Отправить заявку'}
              </button>
